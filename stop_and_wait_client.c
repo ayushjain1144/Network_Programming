@@ -6,6 +6,8 @@
 
 int seq = 0;
 bool is_file_end = false;
+bool send1_over = false;
+bool send2_over = false;
 
 struct timeval* getTimevalStruct ()
 {
@@ -58,8 +60,9 @@ int main(void)
     int socket1, socket2, i;
     PACKET *send_packet1, *send_packet2;
     int yes = 1;
-    fd_set write_fds, master;
+    fd_set read_fds, master;
     int fdmax;
+    int state = 0;
 
     // opening the file, to transfer
     FILE* fp = fopen(FILE_NAME, "r");
@@ -119,13 +122,11 @@ int main(void)
         printf("Connection 2 established\n");
 
     FD_ZERO(&master);
-    FD_ZERO(&write_fds);
+    FD_ZERO(&read_fds);
 
     // add the sockets to both the sets
     FD_SET(socket1, &master);
     FD_SET(socket2, &master);
-    FD_SET(socket1, &write_fds);
-    FD_SET(socket2, &write_fds);
 
     fdmax = socket2;
     if(socket1 > socket2)
@@ -133,36 +134,151 @@ int main(void)
     
 
     // managing the different read fds
-    while(true)
+    while(!is_file_end && !send1_over && !send2_over)
     {
-        write_fds = master;
-        PACKET* packet1, *packet2;
-        if(!is_file_end)
-            packet1 = make_packet(fp, seq++, 0);
-        if(!is_file_end)
-            packet2 = make_packet(fp, seq++, 1);
-        
-        
-        if(select(fdmax + 1, NULL, &write_fds, NULL, t) == -1)
+        read_fds = master;
+        switch(state)
         {
-            perror("select\n");
-            exit(2);
-        }
-
-        //iterating over all the connections
-        for(int i = 0; i < fdmax; i++)
-        {
-            if(FD_ISSET(i, &write_fds))
+            //when both channels are available 
+            case 0:
             {
-                // socket1 is ready to write
-                if(i == socket1)
+                // make packets and send
+                PACKET* packet1, *packet2;
+                if(!is_file_end)
+                    packet1 = make_packet(fp, seq++, 0);
+                else
                 {
-
+                    send1_over = true;
+                    send2_over = true;
+                    break;
+                }
+                
+                if(send(socket1, &packet1, sizeof(&packet1), 0) == -1)
+                {
+                    perror("send1 failed\n");
+                    exit(3);
                 }
 
+                if(!is_file_end)
+                    packet2 = make_packet(fp, seq++, 1);
+                else
+                {
+                    send2_over = true;
+                    state = 3;
+                    break;
+                }
+
+                if(send(socket2, &packet2, sizeof(&packet2), 0) == -1)
+                {
+                    perror("send2 failed\n");
+                    exit(3);
+                }
+
+                // transfer to state 3
+                state = 3;
+                break;
+            }
+
+            case(1):
+            {
+                // 1 can send, 2 is still waiting
+                PACKET* packet1;
+                if(!is_file_end)
+                    packet1 = make_packet(fp, seq++, 0);
+                else
+                {
+                    send1_over = true;
+                    state = 3;
+                    break;
+                }
+                
+                if(send(socket1, &packet1, sizeof(&packet1), 0) == -1)
+                {
+                    perror("send1 failed\n");
+                    exit(3);
+                }
+
+                state = 3;
+                break;
+
+            }
+
+            case(2):
+            {
+                PACKET* packet2;
+                if(!is_file_end)
+                    packet2 = make_packet(fp, seq++, 0);
+                else
+                {
+                    send2_over = true;
+                    state = 3;
+                    break;
+                }
+                
+                if(send(socket2, &packet2, sizeof(&packet2), 0) == -1)
+                {
+                    perror("send2 failed\n");
+                    exit(3);
+                }
+
+                state = 3;
+                break;
+            }
+
+            // both waiting for Ack
+            case(3):
+            {
+                if(select(fdmax + 1, &read_fds, NULL, NULL, t) == -1)
+                {
+                    perror("select\n");
+                    exit(2);
+                }
+
+                //iterating over all the connections
+                for(int i = 0; i < fdmax; i++)
+                {
+                    if(FD_ISSET(i, &read_fds))
+                    {
+                        // socket1 has received ack
+                        if(i == socket1)
+                        {
+                            // we assume ack is valid. Else modify late
+                            char buf[PACKET_SIZE];
+                            if(recv(socket1, buf, sizeof(buf), 0) == -1)
+                            {
+                                perror("Receive from socket1 failed");
+                                exit(4);
+                            }
+                            state = 1;
+
+                        }
+                        else if(i == socket2)
+                        {
+                            char buf[PACKET_SIZE];
+                            if(recv(socket2, buf, sizeof(buf), 0) == -1)
+                            {
+                                perror("Receive from socket2 failed");
+                                exit(4);
+                            }
+                            if(state == 1)
+                                state = 0;
+                            else
+                                state = 2;
+                        }
+
+                    }
+                }
+
+                break;
+            }
+
+            default:
+            {
+                printf("This should not have happenned: %d\n", state);
+                exit(3);
             }
         }
-
+        
 
     }
 }

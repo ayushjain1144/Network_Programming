@@ -1,8 +1,7 @@
 #ifndef __STOP_AND_WAIT
 #define __STOP_AND_WAIT
 
-#define PACKET_SIZE 100
-#define timeout 2
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,5 +11,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <signal.h>
+#include <sys/select.h>
 
 #endif

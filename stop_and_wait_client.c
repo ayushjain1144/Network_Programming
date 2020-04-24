@@ -4,6 +4,9 @@
 #define PORT 1234
 #define FILE_NAME "input.txt"
 
+int seq = 0;
+bool is_file_end = false;
+
 struct timeval* getTimevalStruct ()
 {
     struct timeval* t = (struct timeval*) malloc(sizeof(struct timeval));
@@ -21,7 +24,10 @@ PACKET* make_packet(FILE* fp, int seqNo, int channelID)
 
     // less data read than packet size
     if(num_read < PACKET_SIZE)
+    {
         p->isLastPacket = true;
+        is_file_end = true;
+    }
     else
         p->isLastPacket = false;
     
@@ -59,7 +65,7 @@ int main(void)
     FILE* fp = fopen(FILE_NAME, "r");
 
     // creating the sockets
-    if((socket1 = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP)) == -1)
+    if((socket1 = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1)
     {
         perror("socket1 failed\n");
         exit(1);
@@ -67,7 +73,7 @@ int main(void)
     else
         printf("Socket1 created successfully\n");
 
-    if((socket1 = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP)) == -1)
+    if((socket2 = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1)
     {
         perror("Socket2 failed\n");
         exit(1);
@@ -86,6 +92,7 @@ int main(void)
         perror("setsockopt2");   
         exit(EXIT_FAILURE);   
     }
+    printf("%d %d\n", socket1, socket2);
 
     // setting up server address
     memset(&serverAddr, 0, sizeof(serverAddr));
@@ -123,17 +130,39 @@ int main(void)
     fdmax = socket2;
     if(socket1 > socket2)
         fdmax = socket1;
+    
 
     // managing the different read fds
     while(true)
     {
         write_fds = master;
-
-
-        if(select(fdmax + 1, NULL, &write_fds, NULL, &t) == -1)
+        PACKET* packet1, *packet2;
+        if(!is_file_end)
+            packet1 = make_packet(fp, seq++, 0);
+        if(!is_file_end)
+            packet2 = make_packet(fp, seq++, 1);
+        
+        
+        if(select(fdmax + 1, NULL, &write_fds, NULL, t) == -1)
         {
             perror("select\n");
             exit(2);
         }
+
+        //iterating over all the connections
+        for(int i = 0; i < fdmax; i++)
+        {
+            if(FD_ISSET(i, &write_fds))
+            {
+                // socket1 is ready to write
+                if(i == socket1)
+                {
+
+                }
+
+            }
+        }
+
+
     }
 }

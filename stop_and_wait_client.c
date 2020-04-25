@@ -2,7 +2,7 @@
 #include "packet.h"
 #include <time.h>
 #define PORT 1234
-#define FILE_NAME "input1.txt"
+#define FILE_NAME "input.txt"
 
 int seq = 0;
 bool is_file_end = false;
@@ -20,14 +20,13 @@ struct timeval* getTimevalStruct ()
 PACKET* make_packet(FILE* fp, int seqNo, int channelID)
 {
     PACKET* p = (PACKET*) malloc(sizeof(PACKET));
-    char* payload = (char*) malloc(sizeof(char) * (PACKET_SIZE + 1));
-    memset(payload, '\0', PACKET_SIZE + 1);
-    int num_read = fread(payload, 1, PACKET_SIZE, fp);
+    char* payload = (char*) malloc(sizeof(char) * (PACKET_SIZE));
+    memset(payload, '\0', PACKET_SIZE);
+    int num_read = fread(payload, 1, PACKET_SIZE - 1, fp);
 
     // less data read than packet size
-    if(num_read < PACKET_SIZE)
+    if(num_read < PACKET_SIZE - 1)
     {
-        printf("inside:  %d\n", num_read);
         p->isLastPacket = true;
         is_file_end = true;
     }
@@ -35,7 +34,7 @@ PACKET* make_packet(FILE* fp, int seqNo, int channelID)
         p->isLastPacket = false;
     
     p->isDataNotACK = true;
-    p->size = num_read * sizeof(char);
+    p->size = (num_read + 1) * sizeof(char);
     p->seqNo = seqNo;
     p->channelID = channelID;
     strcpy(p->payload, payload);
@@ -95,7 +94,6 @@ int main(void)
         perror("setsockopt2");   
         exit(EXIT_FAILURE);   
     }
-    printf("%d %d\n", socket1, socket2);
 
     // setting up server address
     memset(&serverAddr, 0, sizeof(serverAddr));

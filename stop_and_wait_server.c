@@ -5,16 +5,11 @@
 #define PDR 0.1
 #define PORT 1234
 #define FILE_NAME "output.txt"
+#define BUFFER_SIZE 10
 bool is_last_packet = false;
 
-// builds a buffer to store 10 packets
-char* get_buffer()
-{
-    char* buf = (char*) malloc(sizeof(char) * PACKET_SIZE * 10);
-    memset(buf, '\0', sizeof(*buf));
-    return buf;
+char* buffer[BUFFER_SIZE];
 
-}
 
 // returns 1 if packet should be dropped
 int toss()
@@ -55,11 +50,58 @@ PACKET* make_ack_packet(int seqNo, int channelID, bool isLastPacket)
     return p;
 }
 
+// NULLify the buffer
+void initialise_buffer(void)
+{
+    for(int i = 0; i < BUFFER_SIZE; i++)
+        buffer[i] = NULL;
+    return;
+}
 
+void write_buffer(FILE* fp)
+{
+    int i = 0;
+    while(buffer[i] != NULL)
+    {
+        fwrite(buffer[i], 1, strlen(buffer[i]), fp);
+        free(buffer[i]);
+        buffer[i] = NULL;
+        i++;
+    }
+}
+
+// returns -1 if buffer is already full at that place, otherwise 0
+int buffer_manager(FILE* fp, PACKET* p)
+{
+    int eff_seq_no = p->seqNo % BUFFER_SIZE;
+    
+    // buffer is not empty
+    if(buffer[eff_seq_no] != NULL)
+    {
+        return -1;
+    }
+
+    // buffer at that position is empty, so put your packet
+    buffer[eff_seq_no] = (char*) malloc(sizeof(p->payload));
+    strcpy(buffer[eff_seq_no], p->payload);
+
+    // check if buffer is full
+    for(int i = 0; i < BUFFER_SIZE; i++)
+    {
+        // buffer is not full, our job is done
+        if(buffer[i] == NULL)
+            return 0;
+    }
+
+    //buffer is full, so write to file
+    write_buffer(fp);
+    return 0;
+}
 
 int main(void)
 {
     srand(time(NULL));
+    initialise_buffer();
     struct sockaddr_in si_me;
     int master_socket;
     int yes = 1;
@@ -133,7 +175,6 @@ int main(void)
         if(socket2 > max_fd)
             max_fd = socket2;
 
-        printf("max_fd at start: %d\n", max_fd);
 
         if(select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1)
         {
@@ -141,12 +182,10 @@ int main(void)
             exit(2);
         }
 
-        printf("Selected detected an event\n");
         
         // obviously a request for connection
         if(FD_ISSET(master_socket, &read_fds))
         {
-            printf("Master is set\n");
             int new_socket;
             if((new_socket = accept(master_socket, (struct sockaddr*) &si_me, (socklen_t*)&addrlen)) == -1)
             {
@@ -172,7 +211,6 @@ int main(void)
                 i = socket2;
             if(FD_ISSET(i, &read_fds))
             {   
-                printf("inside: %d, max_fd: %d\n", i, max_fd);
                 PACKET p;
                 int temp;
                 if((temp = recv(i, &p, sizeof(p), 0)) == -1)
@@ -190,11 +228,15 @@ int main(void)
                 }
                 else
                 {
-                    printf("Inside else\n");
                     printf("RECV PKT: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
                     //print_packet(&p);
+                    int out = buffer_manager(fp, &p);
+                    if(out == -1)
+                    {
+                        printf("Buffer Manager returned -1\n");
+                        continue;
+                    }
                     PACKET* packet = make_ack_packet(p.seqNo, p.channelID, p.isLastPacket);
-                    printf("%ld %ld\n", sizeof(p), sizeof(*packet));
                     if(send(i, packet, sizeof(*packet), 0) == -1)
                     {
                         perror("send failed\n");
@@ -212,16 +254,7 @@ int main(void)
 
            
     }
-
-
-
-
-
-
-
-
-
-
-
-
+    write_buffer(fp);
+    fclose(fp);
+    return 0;
 }

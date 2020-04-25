@@ -192,7 +192,7 @@ int main(void)
                 {
                     printf("Inside else\n");
                     printf("RECV PKT: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
-                    print_packet(&p);
+                    //print_packet(&p);
                     PACKET* packet = make_ack_packet(p.seqNo, p.channelID, p.isLastPacket);
                     printf("%ld %ld\n", sizeof(p), sizeof(*packet));
                     if(send(i, packet, sizeof(*packet), 0) == -1)

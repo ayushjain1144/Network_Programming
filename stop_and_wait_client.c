@@ -2,7 +2,7 @@
 #include "packet.h"
 #include <time.h>
 #define PORT 1234
-#define FILE_NAME "input.txt"
+#define FILE_NAME "input1.txt"
 
 int seq = 0;
 bool is_file_end = false;
@@ -237,9 +237,11 @@ int main(void)
                     exit(2);
                 }
 
+                int count= 0;
                 //iterating over all the connections
-                for(int i = 0; i < fdmax; i++)
+                for(int i = 0; i <= fdmax; i++)
                 {
+                    
                     if(FD_ISSET(i, &read_fds))
                     {
                         // socket1 has received ack or timeout
@@ -255,6 +257,7 @@ int main(void)
                             else
                                 printf("RECV ACK: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
                             state = 1;
+                            count++;
 
                         }
                         else if(i == socket2)
@@ -267,16 +270,16 @@ int main(void)
                             else
                                 printf("RECV ACK: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
 
-                            if(state == 1)
-                                state = 0;
-                            else
-                                state = 2;
+                            state = 2;
+                            count++;
                         }
 
                         is_last_packet = p.isLastPacket;
                     }
                 }
-
+                // both ack's received
+                if(count == 2)
+                    state = 0;
                 break;
             }
 

@@ -75,7 +75,7 @@ int buffer_manager(FILE* fp, PACKET* p)
 {
     int eff_seq_no = p->seqNo % BUFFER_SIZE;
     
-    // buffer is not empty
+    // buffer is not empty at that place
     if(buffer[eff_seq_no] != NULL)
     {
         return -1;
@@ -94,6 +94,7 @@ int buffer_manager(FILE* fp, PACKET* p)
     }
 
     //buffer is full, so write to file
+    printf("Buffer became full\n");
     write_buffer(fp);
     return 0;
 }
@@ -158,7 +159,7 @@ int main(void)
 
 
     //accept connections and data
-    while(!is_last_packet)
+    while(true)
     {
 
         FD_ZERO(&master_fds);
@@ -221,19 +222,25 @@ int main(void)
                 // closed connection
                 else if(temp == 0)
                 {
-                    printf("Closed connection at socket %d\n", i);
-                    exit(2);
-                    close(i);
-                    
+                    printf("Closed connection\n");
+                    write_buffer(fp);
+                    fclose(fp);
+                    return 0;
                 }
                 else
                 {
+                    int toss_result = toss();
+                    if(toss_result)
+                    {
+                        printf("OOPS, packet dropped at server\n");
+                        continue;
+                    }
                     printf("RECV PKT: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
                     //print_packet(&p);
                     int out = buffer_manager(fp, &p);
                     if(out == -1)
                     {
-                        printf("Buffer Manager returned -1\n");
+                        printf("Buffer full. Packet with seq %d from channel %d is out of order and cannot fit buffer. Dropped\n", p.seqNo, p.channelID);
                         continue;
                     }
                     PACKET* packet = make_ack_packet(p.seqNo, p.channelID, p.isLastPacket);

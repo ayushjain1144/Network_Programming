@@ -22,11 +22,12 @@ PACKET* make_packet(FILE* fp, int seqNo, int channelID)
     PACKET* p = (PACKET*) malloc(sizeof(PACKET));
     char* payload = (char*) malloc(sizeof(char) * (PACKET_SIZE + 1));
     memset(payload, '\0', PACKET_SIZE + 1);
-    int num_read = fread(payload, PACKET_SIZE, 1, fp);
+    int num_read = fread(payload, 1, PACKET_SIZE, fp);
 
     // less data read than packet size
     if(num_read < PACKET_SIZE)
     {
+        printf("inside:  %d\n", num_read);
         p->isLastPacket = true;
         is_file_end = true;
     }
@@ -152,13 +153,14 @@ int main(void)
                     send2_over = true;
                     break;
                 }
-                
-                if(send(socket1, &packet1, sizeof(&packet1), 0) == -1)
+                if(send(socket1, packet1, sizeof(*packet1), 0) == -1)
                 {
                     perror("send1 failed\n");
                     exit(3);
                 }
-
+                else
+                    printf("Sent PKT: Seq. No %d of size %d Bytes from channel %d\n", packet1->seqNo, packet1->size, packet1->channelID);
+                
                 if(!is_file_end)
                     packet2 = make_packet(fp, seq++, 1);
                 else
@@ -168,11 +170,13 @@ int main(void)
                     break;
                 }
 
-                if(send(socket2, &packet2, sizeof(&packet2), 0) == -1)
+                if(send(socket2, packet2, sizeof(*packet2), 0) == -1)
                 {
                     perror("send2 failed\n");
                     exit(3);
                 }
+                else
+                    printf("Sent PKT: Seq. No %d of size %d Bytes from channel %d\n", packet2->seqNo, packet2->size, packet2->channelID);
 
                 // transfer to state 3
                 state = 3;
@@ -192,12 +196,14 @@ int main(void)
                     break;
                 }
                 
-                if(send(socket1, &packet1, sizeof(&packet1), 0) == -1)
+                if(send(socket1, packet1, sizeof(*packet1), 0) == -1)
                 {
                     perror("send1 failed\n");
                     exit(3);
                 }
-
+                else
+                    printf("Sent PKT: Seq. No %d of size %d Bytes from channel %d\n", packet1->seqNo, packet1->size, packet1->channelID);
+                
                 state = 3;
                 break;
 
@@ -215,11 +221,13 @@ int main(void)
                     break;
                 }
                 
-                if(send(socket2, &packet2, sizeof(&packet2), 0) == -1)
+                if(send(socket2, packet2, sizeof(*packet2), 0) == -1)
                 {
                     perror("send2 failed\n");
                     exit(3);
                 }
+                else
+                    printf("Sent PKT: Seq. No %d of size %d Bytes from channel %d\n", packet2->seqNo, packet2->size, packet2->channelID);
 
                 state = 3;
                 break;

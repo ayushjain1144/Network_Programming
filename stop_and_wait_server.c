@@ -5,12 +5,13 @@
 #define PDR 0.1
 #define PORT 1234
 #define FILE_NAME "output.txt"
+bool is_last_packet = false;
 
 // builds a buffer to store 10 packets
 char* get_buffer()
 {
     char* buf = (char*) malloc(sizeof(char) * PACKET_SIZE * 10);
-    memset(buf, '\0', sizeof(buf));
+    memset(buf, '\0', sizeof(*buf));
     return buf;
 
 }
@@ -41,11 +42,25 @@ void print_packet(PACKET* p)
     return;
 }
 
+PACKET* make_ack_packet(int seqNo, int channelID, bool isLastPacket)
+{
+    PACKET* p = (PACKET* ) malloc(sizeof(PACKET));
+    strcpy(p->payload, "ACK");
+    p->channelID = channelID;
+    p->isDataNotACK = false;
+    p->isLastPacket = isLastPacket;
+    p->seqNo = seqNo;
+    p->size = sizeof(p->payload);
+    is_last_packet = isLastPacket;
+    return p;
+}
+
+
+
 int main(void)
 {
     srand(time(NULL));
-    struct sockaddr_in si_me, si_other1, si_other2;
-    PACKET *packet1, *packet2;
+    struct sockaddr_in si_me;
     int master_socket;
     int yes = 1;
     fd_set read_fds, master_fds;
@@ -101,7 +116,7 @@ int main(void)
 
 
     //accept connections and data
-    while(true)
+    while(!is_last_packet)
     {
 
         FD_ZERO(&master_fds);
@@ -131,6 +146,7 @@ int main(void)
         // obviously a request for connection
         if(FD_ISSET(master_socket, &read_fds))
         {
+            printf("Master is set\n");
             int new_socket;
             if((new_socket = accept(master_socket, (struct sockaddr*) &si_me, (socklen_t*)&addrlen)) == -1)
             {
@@ -146,40 +162,51 @@ int main(void)
                 socket2 = new_socket;    
         }
 
-            // must be data on some port
-            for(int j = 0; j < 2; j++)
+        // must be data on some port
+        for(int j = 0; j < 2; j++)
+        {   
+            int i;
+            if(j == 0)
+                i = socket1;
+            else
+                i = socket2;
+            if(FD_ISSET(i, &read_fds))
             {   
-                int i;
-                if(j == 0)
-                    i = socket1;
+                printf("inside: %d, max_fd: %d\n", i, max_fd);
+                PACKET p;
+                int temp;
+                if((temp = recv(i, &p, sizeof(p), 0)) == -1)
+                {
+                    printf("Error in recv: %d\n", i);
+                    exit(2);
+                }
+                // closed connection
+                else if(temp == 0)
+                {
+                    printf("Closed connection at socket %d\n", i);
+                    exit(2);
+                    close(i);
+                    
+                }
                 else
-                    i = socket2;
-                if(FD_ISSET(i, &read_fds))
-                {   
-                    printf("inside\n");
-                    PACKET* p;
-                    int temp;
-                    if((temp = recv(i, p, sizeof(*p), 0)) == -1)
+                {
+                    printf("Inside else\n");
+                    printf("RECV PKT: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
+                    print_packet(&p);
+                    PACKET* packet = make_ack_packet(p.seqNo, p.channelID, p.isLastPacket);
+                    printf("%ld %ld\n", sizeof(p), sizeof(*packet));
+                    if(send(i, packet, sizeof(*packet), 0) == -1)
                     {
-                        perror("Error in recv");
-                        exit(2);
-                    }
-                    // closed connection
-                    else if(temp == 0)
-                    {
-                        printf("Closed connection at socket %d\n", i);
-                        close(i);
+                        perror("send failed\n");
+                        exit(3);
                     }
                     else
-                    {
-                        
-                        printf("RECV PKT: Seq. No %d of size %d Bytes from channel %d\n", p->seqNo, p->size, p->channelID);
-                
-                        print_packet(p);
-                    }
+                        printf("Sent ACK: Seq. No %d of size %d Bytes from channel %d\n", packet->seqNo, packet->size, packet->channelID);
 
                 }
+
             }
+        }
             
             
 

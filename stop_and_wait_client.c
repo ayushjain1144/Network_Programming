@@ -6,14 +6,14 @@
 
 int seq = 0;
 bool is_file_end = false;
-bool send1_over = false;
-bool send2_over = false;
+bool is_last_packet;
 
 struct timeval* getTimevalStruct ()
 {
     struct timeval* t = (struct timeval*) malloc(sizeof(struct timeval));
     t->tv_usec = timeout;
     t->tv_usec = 0;
+    return t;
 }
 
 // makes packet by reading from file
@@ -58,8 +58,7 @@ int main(void)
 {
     struct timeval* t = getTimevalStruct();
     struct sockaddr_in serverAddr;
-    int socket1, socket2, i;
-    PACKET *send_packet1, *send_packet2;
+    int socket1, socket2;
     int yes = 1;
     fd_set read_fds, master;
     int fdmax;
@@ -135,7 +134,7 @@ int main(void)
     
 
     // managing the different read fds
-    while(!is_file_end && !send1_over && !send2_over)
+    while(!is_last_packet)
     {
         read_fds = master;
         switch(state)
@@ -149,8 +148,7 @@ int main(void)
                     packet1 = make_packet(fp, seq++, 0);
                 else
                 {
-                    send1_over = true;
-                    send2_over = true;
+                    printf("packet1 exhausted\n");
                     break;
                 }
                 if(send(socket1, packet1, sizeof(*packet1), 0) == -1)
@@ -165,8 +163,7 @@ int main(void)
                     packet2 = make_packet(fp, seq++, 1);
                 else
                 {
-                    send2_over = true;
-                    state = 3;
+                    printf("packet2 exhausted\n");
                     break;
                 }
 
@@ -191,7 +188,6 @@ int main(void)
                     packet1 = make_packet(fp, seq++, 0);
                 else
                 {
-                    send1_over = true;
                     state = 3;
                     break;
                 }
@@ -213,10 +209,9 @@ int main(void)
             {
                 PACKET* packet2;
                 if(!is_file_end)
-                    packet2 = make_packet(fp, seq++, 0);
+                    packet2 = make_packet(fp, seq++, 1);
                 else
                 {
-                    send2_over = true;
                     state = 3;
                     break;
                 }
@@ -248,32 +243,37 @@ int main(void)
                     if(FD_ISSET(i, &read_fds))
                     {
                         // socket1 has received ack or timeout
+                        PACKET p;
                         if(i == socket1)
                         {
-                            // we assume ack is valid. Else modify late
-                            char buf[PACKET_SIZE];
-                            if(recv(socket1, buf, sizeof(buf), 0) == -1)
+                            
+                            if(recv(socket1, &p, sizeof(p), 0) == -1)
                             {
                                 perror("Receive from socket1 failed");
                                 exit(4);
                             }
+                            else
+                                printf("RECV ACK: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
                             state = 1;
 
                         }
                         else if(i == socket2)
                         {
-                            char buf[PACKET_SIZE];
-                            if(recv(socket2, buf, sizeof(buf), 0) == -1)
+                            if(recv(socket2, &p, sizeof(p), 0) == -1)
                             {
                                 perror("Receive from socket2 failed");
                                 exit(4);
                             }
+                            else
+                                printf("RECV ACK: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
+
                             if(state == 1)
                                 state = 0;
                             else
                                 state = 2;
                         }
 
+                        is_last_packet = p.isLastPacket;
                     }
                 }
 

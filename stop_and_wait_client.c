@@ -239,7 +239,7 @@ int main(void)
                 {
                     if(FD_ISSET(i, &read_fds))
                     {
-                        // socket1 has received ack
+                        // socket1 has received ack or timeout
                         if(i == socket1)
                         {
                             // we assume ack is valid. Else modify late

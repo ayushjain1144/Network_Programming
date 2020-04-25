@@ -37,7 +37,11 @@ int main(void)
     PACKET *packet1, *packet2;
     int master_socket;
     int yes = 1;
-
+    fd_set read_fds, master_fds;
+    int max_fd;
+    int socket1, socket2;
+    socket1 = 0;
+    socket2 = 0;
     // opening the file, to transfer
     FILE* fp = fopen(FILE_NAME, "w");
 
@@ -66,11 +70,82 @@ int main(void)
     //bind socket to port
     if(bind(master_socket, (struct sockaddr*)&si_me, sizeof(si_me)) == -1)
     {
-        perror("binf failed");
+        perror("bind failed");
         exit(2);
     }
 
-    
+    if(listen(master_socket, 3) < 0)
+    {
+        perror("listen failed");
+        exit(1);
+    }
+
+    printf("Listen successful\n");
+
+    printf("Waiting for connections...\n");
+
+    FD_ZERO(&master_fds);
+    FD_ZERO(&read_fds);
+    max_fd = master_socket;
+    // add the sockets to both the sets
+    FD_SET(master_socket, &master_fds);
+    FD_SET(socket1, &master_fds);
+    FD_SET(socket2, &master_fds);
+
+
+    //accept connections and data
+    while(true)
+    {
+        read_fds = master_fds;
+
+        if(select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1)
+        {
+            perror("select\n");
+            exit(2);
+        }
+
+        for(int i = 0; i < max_fd; i++)
+        {
+            // obviously a request for connection
+            if(FD_ISSET(master_socket, &read_fds))
+            {
+                int new_socket;
+                if(new_socket = accept(master_socket, (struct sockaddr*) &si_me, (socklen_t*)sizeof(&si_me)) == -1)
+                {
+                    perror("accept failed");
+                    exit(2);
+                }
+
+                printf("Accepted new connection from socket: %d, IP: %s, Port: %d\n", new_socket, inet_ntoa(si_me.sin_addr), ntohs(si_me.sin_port));
+
+                if (socket1 == 0)
+                    socket1 = new_socket;
+                else
+                    socket2 = new_socket;
+                
+                if(new_socket > max_fd)
+                    max_fd = new_socket;
+            }
+            // must be data on some port
+            else
+            {
+                if(FD_ISSET(i, &read_fds))
+                {   
+                    
+                }
+            }
+            
+
+        }   
+    }
+
+
+
+
+
+
+
+
 
 
 

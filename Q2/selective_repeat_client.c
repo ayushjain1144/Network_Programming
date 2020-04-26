@@ -1,14 +1,20 @@
 #include "selective_repeat.h"
 #include "packet.h"
 #include <time.h>
+#include<sys/time.h>
 #define PORT_RELAY1 1234
 #define PORT_RELAY2 1235
 #define FILE_NAME "input.txt"
+#define WINDOW_SIZE 10
 
-int seq_even = 0;
-int seq_odd = 1;
+int seq_num = 0;
 bool is_file_end = false;
 bool is_last_packet;
+int last_ack_received = -1;
+int last_segment_sent = -1;
+int socket1, socket2;
+struct sockaddr_in relayAddr1, relayAddr2;
+int relayAddr1_len, relayAddr2_len;
 
 struct timeval* getTimevalStruct ()
 {
@@ -19,7 +25,7 @@ struct timeval* getTimevalStruct ()
 }
 
 // makes packet by reading from file
-PACKET* make_packet(FILE* fp, int seqNo, int channelID)
+PACKET* make_packet(FILE* fp, int seqNo, int channelID,int last_acked_data_seq)
 {
     PACKET* p = (PACKET*) malloc(sizeof(PACKET));
     char* payload = (char*) malloc(sizeof(char) * (PACKET_SIZE));
@@ -39,6 +45,8 @@ PACKET* make_packet(FILE* fp, int seqNo, int channelID)
     p->size = (num_read + 1) * sizeof(char);
     p->seqNo = seqNo;
     p->channelID = channelID;
+    p->last_acked_data_seq = last_acked_data_seq;
+    p->window_size = WINDOW_SIZE / 2;
     strcpy(p->payload, payload);
     free(payload);
     return p;
@@ -55,11 +63,56 @@ void print_packet(PACKET* p)
     return;
 }
 
+char* get_sys_time(void)
+{
+    char* time_str = (char*) malloc(sizeof(char) * 20);
+    time_t current_time = time(NULL);
+    struct tm* tp = localtime(&current_time);
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    strftime(time_str, 20, "%H:%M:%S", tp);
+    char milliseconds[8];
+    sprintf(milliseconds, ".%06ld", t.tv_usec);
+    strcat(time_str, milliseconds);
+    return time_str;
+}
+
+// takes seq no as input and sends packet to appropriate relay
+void send_packet(PACKET* w, int seq_no)
+{
+    int socket_send;
+    struct sockaddr_in relayAddr;
+    int relayAddr_len;
+    char dest[7];
+    if(seq_no % 2 == 0)
+    {
+        socket_send = socket1;
+        relayAddr = relayAddr1;
+        relayAddr_len = relayAddr1_len;
+        strcpy(dest, "relay1");
+    }
+    else
+    {
+        socket_send = socket2;
+        relayAddr = relayAddr2;
+        relayAddr_len = relayAddr2_len;
+        strcpy(dest, "relay2");
+    }
+
+    if(sendto(socket_send, w, sizeof(*w),
+            0, (struct sockaddr*) &relayAddr, relayAddr_len) == -1)
+    {
+        perror("Send failed");
+        exit(2);
+    }
+    else
+        printf("Packet sent at Client  Client  S  %s  DATA  %d  CLIENT  %s\n", get_sys_time(), w->seqNo, dest);
+    
+}
+
 int main(void)
 {
     struct timeval* t = getTimevalStruct();
-    struct sockaddr_in relayAddr1, relayAddr2;
-    int socket1, socket2;
     int yes = 1;
     fd_set read_fds, master;
     int fdmax;
@@ -103,11 +156,13 @@ int main(void)
     relayAddr1.sin_family = AF_INET;
     relayAddr1.sin_port = htons(PORT_RELAY1);
     relayAddr1.sin_addr.s_addr = inet_addr("127.0.0.1");
+    relayAddr1_len = sizeof(relayAddr1);
 
     memset(&relayAddr2, 0, sizeof(relayAddr2));
     relayAddr2.sin_family = AF_INET;
     relayAddr2.sin_port = htons(PORT_RELAY2);
     relayAddr2.sin_addr.s_addr = inet_addr("127.0.0.1");
+    relayAddr2_len = sizeof(relayAddr2);
 
 
     FD_ZERO(&master);
@@ -124,204 +179,55 @@ int main(void)
     bool is_exit = false;
     bool send1_over = false;
     bool send2_over = false;
+
+    // buffer for packet window
+    WINDOW* window[WINDOW_SIZE];
+    for(int i = 0; i < WINDOW_SIZE; i++)
+    {
+        window[i]->p = NULL;
+        window[i]->is_acked = false;
+    }
     // managing the different read fds
     while(!is_exit && !(send1_over && send2_over))
     {
         read_fds = master;
-        PACKET* packet1, *packet2;
-        switch(state)
+
+        // fill the window with packets
+        for(int i = 0; i < WINDOW_SIZE; i++)
         {
-            //when both channels are available 
-            case 0:
-            {
-
-                if(is_last_packet)
-                {
-                    is_exit = true;
-                    break;
-                }
-                // make packets and send
-                
-                if(!is_file_end)
-                    packet1 = make_packet(fp, seq++, 0);
-                else
-                {
-                    send1_over = true;
-                    send2_over = true;
-                    break;
-                }
-                if(send(socket1, packet1, sizeof(*packet1), 0) == -1)
-                {
-                    perror("send1 failed\n");
-                    exit(3);
-                }
-                else
-                    printf("Sent PKT: Seq. No %d of size %d Bytes from channel %d\n", packet1->seqNo, packet1->size, packet1->channelID);
-                
-                if(!is_file_end)
-                    packet2 = make_packet(fp, seq++, 1);
-                else
-                {
-                    send2_over = true;
-                    state = 3;
-                    break;
-                }
-
-                if(send(socket2, packet2, sizeof(*packet2), 0) == -1)
-                {
-                    perror("send2 failed\n");
-                    exit(3);
-                }
-                else
-                    printf("Sent PKT: Seq. No %d of size %d Bytes from channel %d\n", packet2->seqNo, packet2->size, packet2->channelID);
-
-                // transfer to state 3
-                state = 3;
+            int channelID;
+            PACKET* p;
+            if(i % 2 == 0)
+                channelID = 0;
+            else
+                channelID = 1;
+            
+            if(!is_file_end)
+                p = make_packet(fp, seq_num++, channelID, last_ack_received);
+            else
                 break;
-            }
-
-            case(1):
-            {
-                // 1 can send, 2 is still waiting
-                if(!is_file_end)
-                    packet1 = make_packet(fp, seq++, 0);
-                else
-                {
-                    send1_over = true;
-                    state = 3;
-                    break;
-                }
-                
-                if(send(socket1, packet1, sizeof(*packet1), 0) == -1)
-                {
-                    perror("send1 failed\n");
-                    exit(3);
-                }
-                else
-                    printf("Sent PKT: Seq. No %d of size %d Bytes from channel %d\n", packet1->seqNo, packet1->size, packet1->channelID);
-                
-                state = 3;
-                break;
-
-            }
-
-            case(2):
-            {
-                if(!is_file_end)
-                    packet2 = make_packet(fp, seq++, 1);
-                else
-                {
-                    send2_over = true;
-                    state = 3;
-                    break;
-                }
-                
-                if(send(socket2, packet2, sizeof(*packet2), 0) == -1)
-                {
-                    perror("send2 failed\n");
-                    exit(3);
-                }
-                else
-                    printf("Sent PKT: Seq. No %d of size %d Bytes from channel %d\n", packet2->seqNo, packet2->size, packet2->channelID);
-
-                state = 3;
-                break;
-            }
-
-            // both waiting for Ack
-            case(3):
-            {
-                int out;
-                t = getTimevalStruct();
-                if((out = select(fdmax + 1, &read_fds, NULL, NULL, t)) == -1)
-                {
-                    perror("select\n");
-                    exit(2);
-                }
-
-                //timeout occurred
-                if(out == 0)
-                {
-                    if(packet1->seqNo != last_ack)
-                    {
-                        printf("Packet Sent Timeout. Trying to retransmit......\n");
-                        if(send(socket1, packet1, sizeof(*packet1), 0) == -1)
-                        {
-                            perror("send1 failed\n");
-                            exit(3);
-                        }
-                        else
-                            printf("Resent PKT: Seq. No %d of size %d Bytes from channel %d\n", packet1->seqNo, packet1->size, packet1->channelID);
-                    }
-
-                    if(packet2->seqNo != last_ack)
-                    {
-                        if(send(socket2, packet2, sizeof(*packet2), 0) == -1)
-                        {
-                            perror("send2 failed\n");
-                            exit(3);
-                        }
-                        else
-                            printf("Resent PKT: Seq. No %d of size %d Bytes from channel %d\n", packet2->seqNo, packet2->size, packet2->channelID);
-                    }
-                    
-                    state = 3;
-                    break;
-                }
-                int count= 0;
-                //iterating over all the connections
-                for(int i = 0; i <= fdmax; i++)
-                {
-                    
-                    if(FD_ISSET(i, &read_fds))
-                    {
-                        // socket1 has received ack or timeout
-                        PACKET p;
-                        if(i == socket1)
-                        {
-                            
-                            if(recv(socket1, &p, sizeof(p), 0) == -1)
-                            {
-                                perror("Receive from socket1 failed");
-                                exit(4);
-                            }
-                            else
-                                printf("RECV ACK: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
-                            last_ack  = p.seqNo;
-                            state = 1;
-                            count++;
-
-                        }
-                        else if(i == socket2)
-                        {
-                            if(recv(socket2, &p, sizeof(p), 0) == -1)
-                            {
-                                perror("Receive from socket2 failed");
-                                exit(4);
-                            }
-                            else
-                                printf("RECV ACK: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
-                            last_ack = p.seqNo;
-                            state = 2;
-                            count++;
-                        }
-
-                        is_last_packet = p.isLastPacket;
-                    }
-                }
-                // both ack's received
-                if(count == 2)
-                    state = 0;
-                break;
-            }
-
-            default:
-            {
-                printf("This should not have happenned: %d\n", state);
-                exit(3);
-            }
+            window[i] = p;
         }
-        
+
+        //send all packets
+        for(int i = 0; i < WINDOW_SIZE; i++)
+        {
+            if(w[i]->p != NULL)
+                send_packet(w[i]->p, w[i]->p->seq_no);
+        }
+
+        // wait for acks on one of socket. 
+        // since ack can come from any channel, important thing is to see its ack seq number
+
+        int out;
+        t = getTimevalStruct();
+        if((out = select(fdmax + 1, &read_fds, NULL, NULL, t)) == -1)
+        {
+            perror("select\n");
+            exit(2);
+        }
+
+        //if timeout on whole window, send all the unacked packets.
 
     }
 }

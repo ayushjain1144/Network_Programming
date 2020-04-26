@@ -1,8 +1,5 @@
 #ifndef __SELECTIVE_REPEAT
 #define __SELECTIVE_REPEAT
-
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,5 +10,12 @@
 #include <arpa/inet.h>
 #include <signal.h>
 #include <sys/select.h>
+#include <boolean.h>
+
+typedef struct WINDOW
+{
+    PACKET* p;
+    bool is_acked;
+}WINDOW;
 
 #endif

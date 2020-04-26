@@ -12,6 +12,7 @@ bool is_file_end = false;
 bool is_last_packet;
 int last_ack_received = -1;
 int last_segment_sent = -1;
+int window_border = 0;
 int socket1, socket2;
 struct sockaddr_in relayAddr1, relayAddr2;
 int relayAddr1_len, relayAddr2_len;
@@ -110,20 +111,53 @@ void send_packet(PACKET* w, int seq_no)
     
 }
 
+void slide_window(FILE* fp, WINDOW* window[])
+{
+    int temp = window_border;
+    
+    //replace the current border packet with a new packet and send it
+    do
+    {
+        int channelID;
+        PACKET* p;
+        if(window_border % 2 == 0)
+            channelID = 0;
+        else
+            channelID = 1;
+        
+        if(!is_file_end)
+            p = make_packet(fp, seq_num++, channelID, last_ack_received);
+        else
+            break;
+        window[window_border]->p = p;
+        window[window_border]->is_acked = false;
+
+        send_packet(window[window_border]->p, window[window_border]->p->seqNo);
+
+        window_border = (window_border + 1) % WINDOW_SIZE;
+
+        //if next packet is not acked yet, dont slide more
+        if(window[window_border]->is_acked == false)
+            break;
+    } while (window_border != temp);
+    
+}
+
+
 int main(void)
 {
     struct timeval* t = getTimevalStruct();
     int yes = 1;
     fd_set read_fds, master;
     int fdmax;
-    int state = 0;
-    int last_ack = -1;
+    // int state = 0;
+    // int last_ack = -1;
 
     // opening the file, to transfer
     FILE* fp = fopen(FILE_NAME, "r");
 
     // creating the sockets
-    if((socket1 = socket(AF_INET, SOCK_STREAM, IPPROTO_UDP)) == -1)
+    if((socket1 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
     {
         perror("socket1 failed\n");
         exit(1);
@@ -131,7 +165,7 @@ int main(void)
     else
         printf("Socket1 created successfully\n");
 
-    if((socket2 = socket(AF_INET, SOCK_STREAM, IPPROTO_UDP)) == -1)
+    if((socket2 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
     {
         perror("Socket2 failed\n");
         exit(1);
@@ -187,34 +221,35 @@ int main(void)
         window[i]->p = NULL;
         window[i]->is_acked = false;
     }
+
+    // fill the window with packets
+    for(int i = 0; i < WINDOW_SIZE; i++)
+    {
+        int channelID;
+        PACKET* p;
+        if(i % 2 == 0)
+            channelID = 0;
+        else
+            channelID = 1;
+        
+        if(!is_file_end)
+            p = make_packet(fp, seq_num++, channelID, last_ack_received);
+        else
+            break;
+        window[i]->p = p;
+    }
+
+    //send all packets
+    for(int i = 0; i < WINDOW_SIZE; i++)
+    {
+        if(window[i]->p != NULL)
+            send_packet(window[i]->p, window[i]->p->seqNo);
+    }
+
     // managing the different read fds
     while(!is_exit && !(send1_over && send2_over))
     {
         read_fds = master;
-
-        // fill the window with packets
-        for(int i = 0; i < WINDOW_SIZE; i++)
-        {
-            int channelID;
-            PACKET* p;
-            if(i % 2 == 0)
-                channelID = 0;
-            else
-                channelID = 1;
-            
-            if(!is_file_end)
-                p = make_packet(fp, seq_num++, channelID, last_ack_received);
-            else
-                break;
-            window[i] = p;
-        }
-
-        //send all packets
-        for(int i = 0; i < WINDOW_SIZE; i++)
-        {
-            if(w[i]->p != NULL)
-                send_packet(w[i]->p, w[i]->p->seq_no);
-        }
 
         // wait for acks on one of socket. 
         // since ack can come from any channel, important thing is to see its ack seq number
@@ -228,6 +263,60 @@ int main(void)
         }
 
         //if timeout on whole window, send all the unacked packets.
+        if(out == 0)
+        {
+            //searching for unacked packets
+            for(int i = 0; i < WINDOW_SIZE; i++)
+            {
+                // found unacked packet
+                if(window[i]->p != NULL && window[i]->is_acked == false)
+                {
+                    send_packet(window[i]->p, i);
+                }
+            }
+        }
 
+        //Not a timeout, we received an ACK for some packet
+        //iterating over all the connections
+        for(int i = 0; i <= fdmax; i++)
+        {
+            
+            if(FD_ISSET(i, &read_fds))
+            {
+                // socket1 has received ack
+                PACKET p;
+                if(i == socket1)
+                {
+                    if(recv(socket1, &p, sizeof(p), 0) == -1)
+                    {
+                        perror("Receive from socket1 failed");
+                        exit(4);
+                    }
+                    else
+                        printf("Ack from relay1  Client  R  %s ACK  %d  RELAY1  CLIENT\n", get_sys_time(), p.seqNo);
+                    last_ack_received  = p.seqNo;
+
+                }
+                else if(i == socket2)
+                {
+                    if(recv(socket2, &p, sizeof(p), 0) == -1)
+                    {
+                        perror("Receive from socket2 failed");
+                        exit(4);
+                    }
+                    else
+                        printf("Ack from relay2  Client  R  %s ACK  %d  RELAY2  CLIENT\n", get_sys_time(), p.seqNo);
+                    last_ack_received = p.seqNo;
+                }
+
+                //update the ack in window
+                int window_index = last_ack_received % WINDOW_SIZE;
+                window[window_index]->is_acked = true;
+                
+                //slide the window and all, if needed.
+                if(window[window_border]->is_acked)
+                    slide_window(fp, window);
+            }
+        }
     }
 }

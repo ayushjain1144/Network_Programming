@@ -46,7 +46,7 @@ int main(void)
     socket2 = 0;
 
     // creating the sockets
-    if((master_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_UDP)) == -1)
+    if((master_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
     {
         perror("master socket failed\n");
         exit(1);

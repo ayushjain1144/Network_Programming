@@ -10,7 +10,8 @@
 #include <arpa/inet.h>
 #include <signal.h>
 #include <sys/select.h>
-#include <boolean.h>
+#include <stdbool.h>
+#include "packet.h"
 
 typedef struct WINDOW
 {

@@ -26,7 +26,7 @@ struct timeval* getTimevalStruct ()
 }
 
 // makes packet by reading from file
-PACKET* make_packet(FILE* fp, int seqNo, int channelID,int last_acked_data_seq)
+PACKET* make_packet(FILE* fp, int seqNo, int channelID, int last_acked_data_seq)
 {
     PACKET* p = (PACKET*) malloc(sizeof(PACKET));
     char* payload = (char*) malloc(sizeof(char) * (PACKET_SIZE));
@@ -121,9 +121,9 @@ void slide_window(FILE* fp, WINDOW* window[])
         int channelID;
         PACKET* p;
         if(window_border % 2 == 0)
-            channelID = 0;
-        else
             channelID = 1;
+        else
+            channelID = 2;
         
         if(!is_file_end)
             p = make_packet(fp, seq_num++, channelID, last_ack_received);
@@ -228,9 +228,9 @@ int main(void)
         int channelID;
         PACKET* p;
         if(i % 2 == 0)
-            channelID = 0;
-        else
             channelID = 1;
+        else
+            channelID = 2;
         
         if(!is_file_end)
             p = make_packet(fp, seq_num++, channelID, last_ack_received);
@@ -287,7 +287,7 @@ int main(void)
                 PACKET p;
                 if(i == socket1)
                 {
-                    if(recv(socket1, &p, sizeof(p), 0) == -1)
+                    if(recvfrom(socket1, &p, sizeof(p), 0, (struct sockaddr*) &relayAddr1, (socklen_t*)&relayAddr1_len) == -1)
                     {
                         perror("Receive from socket1 failed");
                         exit(4);
@@ -299,7 +299,7 @@ int main(void)
                 }
                 else if(i == socket2)
                 {
-                    if(recv(socket2, &p, sizeof(p), 0) == -1)
+                    if(recvfrom(socket2, &p, sizeof(p), 0, (struct sockaddr*) &relayAddr2, (socklen_t*)&relayAddr2_len) == -1)
                     {
                         perror("Receive from socket2 failed");
                         exit(4);

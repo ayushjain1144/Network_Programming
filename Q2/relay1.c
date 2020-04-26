@@ -2,16 +2,18 @@
 #include "packet.h"
 #include <time.h>
 #include <string.h>
-#define PDR 0.1
+#define PDR 0
 #define PORT_RELAY1 1234
+#define PORT_RELAY2 1235
 #define PORT_SERVER 8787
+#define MAX_ACK_DELAY 2
 
 // returns 1 if packet should be dropped
 int toss()
 {
     if(PDR > 1)
     {
-        printf("PDR value must be between 0 and 1, got %f\n", PDR);
+        printf("PDR value must be between 0 and 1, got %d\n", PDR);
         exit(1);
     }
     float num = rand() / (float)RAND_MAX;
@@ -32,112 +34,161 @@ void print_packet(PACKET* p)
     return;
 }
 
+char* get_sys_time(void)
+{
+    char* time_str = (char*) malloc(sizeof(char) * 20);
+    time_t current_time = time(NULL);
+    struct tm* tp = localtime(&current_time);
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    strftime(time_str, 20, "%H:%M:%S", tp);
+    char milliseconds[8];
+    sprintf(milliseconds, ".%06ld", t.tv_usec);
+    strcat(time_str, milliseconds);
+    return time_str;
+}
 
 int main(void)
 {
     srand(time(NULL));
-    struct sockaddr_in si_me, si_server;
-    int master_socket;
+    struct sockaddr_in si_relay1, si_relay2, si_server, si_client, si_other;
+    int si_other_len = sizeof(si_other);
     int yes = 1;
-    fd_set read_fds, master_fds;
-    int max_fd;
-    int socket1, socket2;
+    fd_set read_fds, master;
+    int fdmax;
+    int socket1, socket2, socket_server;
     socket1 = 0;
     socket2 = 0;
+    socket_server = 0;
 
     // creating the sockets
-    if((master_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+    if((socket1 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
     {
-        perror("master socket failed\n");
+        perror("socket1 failed\n");
         exit(1);
     }
     else
-        printf("Master Socket created successfully\n");
+        printf("Socket1 created successfully\n");
+
+    if((socket2 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+    {
+        perror("socket2 failed\n");
+        exit(1);
+    }
+    else
+        printf("Socket2 created successfully\n");
+
+    // creating the sockets
+    if((socket_server = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+    {
+        perror("socket_server failed\n");
+        exit(1);
+    }
+    else
+        printf("Socket Server created successfully\n");
 
     //for reusing the same sockets :)
-    if(setsockopt(master_socket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) < 0 )   
+    if(setsockopt(socket1, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) < 0 )   
     {   
         perror("setsockopt1");   
         exit(EXIT_FAILURE);   
     }
 
-     // setting up my(relay) address
-    memset(&si_me, 0, sizeof(si_me));
-    si_me.sin_family = AF_INET;
-    si_me.sin_port = htons(PORT_RELAY1);
-    si_me.sin_addr.s_addr = htonl(INADDR_ANY);
+    //for reusing the same sockets :)
+    if(setsockopt(socket2, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) < 0 )   
+    {   
+        perror("setsockopt2");   
+        exit(EXIT_FAILURE);   
+    }
+
+    if(setsockopt(socket_server, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) < 0 )   
+    {   
+        perror("setsockopt_server");   
+        exit(EXIT_FAILURE);   
+    }
+
+     // setting up relay1 address
+    memset(&si_relay1, 0, sizeof(si_relay1));
+    si_relay1.sin_family = AF_INET;
+    si_relay1.sin_port = htons(PORT_RELAY1);
+    si_relay1.sin_addr.s_addr = htonl(INADDR_ANY);
 
     //bind socket to port
-    if(bind(master_socket, (struct sockaddr*)&si_me, sizeof(si_me)) == -1)
+    if(bind(socket1, (struct sockaddr*)&si_relay1, sizeof(si_relay1)) == -1)
     {
         perror("bind failed");
         exit(2);
     }
 
-    int addrlen_me = sizeof(si_me);
+    int addrlen_relay1 = sizeof(si_relay1);
+
+    // setting up relay2 address
+    memset(&si_relay2, 0, sizeof(si_relay2));
+    si_relay2.sin_family = AF_INET;
+    si_relay2.sin_port = htons(PORT_RELAY2);
+    si_relay2.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    //bind socket to port
+    if(bind(socket2, (struct sockaddr*)&si_relay2, sizeof(si_relay2)) == -1)
+    {
+        perror("bind failed");
+        exit(2);
+    }
+
+    int addrlen_relay2 = sizeof(si_relay2);
 
     // setting up server address
-    memset(&si_server, 0, sizeof(si_me));
+    memset(&si_server, 0, sizeof(si_server));
     si_server.sin_family = AF_INET;
     si_server.sin_port = htons(PORT_SERVER);
     si_server.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    //accept connections and data
+    int addrlen_server = sizeof(addrlen_server);
+
+    FD_ZERO(&master);
+    FD_ZERO(&read_fds);
+
+    // add the sockets to both the sets
+    FD_SET(socket1, &master);
+    FD_SET(socket2, &master);
+    FD_SET(socket_server, &master);
+
+    fdmax = socket2;
+    if(socket1 > socket2)
+        fdmax = socket1;
+    if(socket_server > fdmax)
+        fdmax = socket_server;
+
+    //accept and send data
     while(true)
     {
-        FD_ZERO(&master_fds);
-        FD_ZERO(&read_fds);
-        max_fd = master_socket;
-        // add the sockets to both the sets
-        FD_SET(master_socket, &master_fds);
-        FD_SET(socket1, &master_fds);
-        FD_SET(socket2, &master_fds);
-        read_fds = master_fds;
         
-        if(socket1 > max_fd)
-            max_fd = socket1;
-        if(socket2 > max_fd)
-            max_fd = socket2;
+        read_fds = master;
 
-
-        if(select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1)
+        // look for data
+        if(select(fdmax + 1, &read_fds, NULL, NULL, NULL) == -1)
         {
             perror("select\n");
             exit(2);
         }
 
-        
-        // obviously a request for connection
-        if(FD_ISSET(master_socket, &read_fds))
-        {
-            int new_socket;
-            if((new_socket = accept(master_socket, (struct sockaddr*) &si_me, (socklen_t*)&addrlen)) == -1)
-            {
-                perror("accept failed");
-                exit(2);
-            }
-
-            printf("Accepted new connection from socket: %d, IP: %s, Port: %d\n", new_socket, inet_ntoa(si_me.sin_addr), ntohs(si_me.sin_port));
-
-            if (socket1 == 0)
-                socket1 = new_socket;
-            else
-                socket2 = new_socket;    
-        }
-
-        // must be data on some port
+        // if data for relay from client
+        // decide if you want to accept, if yes then send ack (add delay)
         for(int j = 0; j < 2; j++)
         {   
             int i;
+
             if(j == 0)
                 i = socket1;
             else
                 i = socket2;
+
             if(FD_ISSET(i, &read_fds))
             {   
                 PACKET p;
                 int temp;
-                if((temp = recv(i, &p, sizeof(p), 0)) == -1)
+                memset(&si_other, 0, si_other_len);
+                if((temp = recvfrom(i, &p, sizeof(p), 0, (struct sockaddr*) &si_other,(socklen_t*) &si_other_len)) == -1)
                 {
                     printf("Error in recv: %d\n", i);
                     exit(2);
@@ -146,40 +197,63 @@ int main(void)
                 else if(temp == 0)
                 {
                     printf("Closed connection\n");
-                    write_buffer(fp);
-                    fclose(fp);
                     return 0;
                 }
                 else
                 {
-                    int toss_result = toss();
-                    if(toss_result)
-                    {
-                        printf("OOPS, packet dropped at server\n");
-                        continue;
-                    }
-                    printf("RECV PKT: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
-                    //print_packet(&p);
-                    int out = buffer_manager(fp, &p);
-                    if(out == -1)
-                    {
-                        printf("Buffer full. Packet with seq %d from channel %d is out of order and cannot fit buffer. Dropped\n", p.seqNo, p.channelID);
-                        continue;
-                    }
-                    PACKET* packet = make_ack_packet(p.seqNo, p.channelID, p.isLastPacket);
-                    if(send(i, packet, sizeof(*packet), 0) == -1)
-                    {
-                        perror("send failed\n");
-                        exit(3);
-                    }
-                    else
-                        printf("Sent ACK: Seq. No %d of size %d Bytes from channel %d\n", packet->seqNo, packet->size, packet->channelID);
 
+                    //packet can be from server or form client
+                    //if data it is from client, just send it to server
+                    //else ack, either drop or send it with delay
+
+                    // We have got data, send it to server
+                    if(p.isDataNotACK)
+                    {
+                        // store client info for future use.
+                        si_client = si_other;
+                        int toss_result = toss();
+                        if(toss_result)
+                        {
+                            printf("OOPS, packet dropped at relay%d\n", j + 1);
+                            continue;
+                        }
+
+                        printf("Packet recvd at Relay%d  Relay%d  R  %s  DATA  %d  SERVER  RELAY%d\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
+
+                        if(sendto(socket_server, &p, sizeof(p),
+                                0, (struct sockaddr*) &si_server, addrlen_server) == -1)
+                        {
+                            perror("Send failed");
+                            exit(2);
+                        }
+                        else
+                            printf("Packet sent at Relay%d  Relay%d  S  %s  DATA  %d  RELAY%d  SERVER\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
+                    }
+                    
+                    // It's ACK!!
+                    
+                    else
+                    {
+                        printf("Packet recvd at Relay%d  Relay%d  R  %s  ACK  %d  SERVER  RELAY%d\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
+                        
+                        usleep((rand() % MAX_ACK_DELAY) * 1000);
+                        int addrlen_client = sizeof(si_client);
+                        if(sendto(i, &p, sizeof(p),
+                                0, (struct sockaddr*) &si_client, addrlen_client) == -1)
+                        {
+                            perror("Send failed");
+                            exit(2);
+                        }
+                        else
+                            printf("Packet sent at Relay%d  Relay%d  S  %s  DATA  %d  RELAY%d  SERVER\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
+                    }
                 }
 
             }
         }
-            
+        
+
+
             
 
            

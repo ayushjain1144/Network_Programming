@@ -1,6 +1,7 @@
 #ifndef __PACKET
 #define __PACKET
 #include <stdbool.h>
+#include<sys/time.h>
 #define PACKET_SIZE 100
 #define timeout 2
 

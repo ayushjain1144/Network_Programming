@@ -1,12 +1,15 @@
 #include "selective_repeat.h"
 #include "packet.h"
 #include <time.h>
-#define PORT 1234
+#define PORT_RELAY1 1234
+#define PORT_RELAY2 1235
 #define FILE_NAME "input.txt"
 
-int seq = 0;
+int seq_even = 0;
+int seq_odd = 1;
 bool is_file_end = false;
 bool is_last_packet;
+
 struct timeval* getTimevalStruct ()
 {
     struct timeval* t = (struct timeval*) malloc(sizeof(struct timeval));
@@ -55,7 +58,7 @@ void print_packet(PACKET* p)
 int main(void)
 {
     struct timeval* t = getTimevalStruct();
-    struct sockaddr_in serverAddr;
+    struct sockaddr_in relayAddr1, relayAddr2;
     int socket1, socket2;
     int yes = 1;
     fd_set read_fds, master;
@@ -67,7 +70,7 @@ int main(void)
     FILE* fp = fopen(FILE_NAME, "r");
 
     // creating the sockets
-    if((socket1 = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1)
+    if((socket1 = socket(AF_INET, SOCK_STREAM, IPPROTO_UDP)) == -1)
     {
         perror("socket1 failed\n");
         exit(1);
@@ -75,7 +78,7 @@ int main(void)
     else
         printf("Socket1 created successfully\n");
 
-    if((socket2 = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1)
+    if((socket2 = socket(AF_INET, SOCK_STREAM, IPPROTO_UDP)) == -1)
     {
         perror("Socket2 failed\n");
         exit(1);
@@ -95,29 +98,17 @@ int main(void)
         exit(EXIT_FAILURE);   
     }
 
-    // setting up server address
-    memset(&serverAddr, 0, sizeof(serverAddr));
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(PORT);
-    serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    // setting up relay addresses
+    memset(&relayAddr1, 0, sizeof(relayAddr1));
+    relayAddr1.sin_family = AF_INET;
+    relayAddr1.sin_port = htons(PORT_RELAY1);
+    relayAddr1.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    //establishing connection
+    memset(&relayAddr2, 0, sizeof(relayAddr2));
+    relayAddr2.sin_family = AF_INET;
+    relayAddr2.sin_port = htons(PORT_RELAY2);
+    relayAddr2.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    if(connect(socket1, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0)
-    {
-        perror("Connection 1 failed\n");
-        exit(1);
-    }
-    else
-        printf("Connection1 established\n");
-
-    if(connect(socket2, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0)
-    {
-        perror("Connection 2 failed\n");
-        exit(1);
-    }
-    else
-        printf("Connection 2 established\n");
 
     FD_ZERO(&master);
     FD_ZERO(&read_fds);

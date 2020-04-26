@@ -3,13 +3,8 @@
 #include <time.h>
 #include <string.h>
 #define PDR 0.1
-#define PORT 8787
-#define FILE_NAME "output.txt"
-#define BUFFER_SIZE 10
-bool is_last_packet = false;
-
-char* buffer[BUFFER_SIZE];
-
+#define PORT_RELAY1 1234
+#define PORT_SERVER 8787
 
 // returns 1 if packet should be dropped
 int toss()
@@ -37,73 +32,11 @@ void print_packet(PACKET* p)
     return;
 }
 
-PACKET* make_ack_packet(int seqNo, int channelID, bool isLastPacket)
-{
-    PACKET* p = (PACKET* ) malloc(sizeof(PACKET));
-    strcpy(p->payload, "ACK");
-    p->channelID = channelID;
-    p->isDataNotACK = false;
-    p->isLastPacket = isLastPacket;
-    p->seqNo = seqNo;
-    p->size = sizeof(p->payload);
-    is_last_packet = isLastPacket;
-    return p;
-}
-
-// NULLify the buffer
-void initialise_buffer(void)
-{
-    for(int i = 0; i < BUFFER_SIZE; i++)
-        buffer[i] = NULL;
-    return;
-}
-
-void write_buffer(FILE* fp)
-{
-    int i = 0;
-    while(buffer[i] != NULL)
-    {
-        fwrite(buffer[i], 1, strlen(buffer[i]), fp);
-        free(buffer[i]);
-        buffer[i] = NULL;
-        i++;
-    }
-}
-
-// returns -1 if buffer is already full at that place, otherwise 0
-int buffer_manager(FILE* fp, PACKET* p)
-{
-    int eff_seq_no = p->seqNo % BUFFER_SIZE;
-    
-    // buffer is not empty at that place
-    if(buffer[eff_seq_no] != NULL)
-    {
-        return -1;
-    }
-
-    // buffer at that position is empty, so put your packet
-    buffer[eff_seq_no] = (char*) malloc(sizeof(p->payload));
-    strcpy(buffer[eff_seq_no], p->payload);
-
-    // check if buffer is full
-    for(int i = 0; i < BUFFER_SIZE; i++)
-    {
-        // buffer is not full, our job is done
-        if(buffer[i] == NULL)
-            return 0;
-    }
-
-    //buffer is full, so write to file
-    printf("Buffer became full\n");
-    write_buffer(fp);
-    return 0;
-}
 
 int main(void)
 {
     srand(time(NULL));
-    initialise_buffer();
-    struct sockaddr_in si_me;
+    struct sockaddr_in si_me, si_server;
     int master_socket;
     int yes = 1;
     fd_set read_fds, master_fds;
@@ -111,8 +44,6 @@ int main(void)
     int socket1, socket2;
     socket1 = 0;
     socket2 = 0;
-    // opening the file, to transfer
-    FILE* fp = fopen(FILE_NAME, "w");
 
     // creating the sockets
     if((master_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_UDP)) == -1)
@@ -130,10 +61,10 @@ int main(void)
         exit(EXIT_FAILURE);   
     }
 
-     // setting up server address
+     // setting up my(relay) address
     memset(&si_me, 0, sizeof(si_me));
     si_me.sin_family = AF_INET;
-    si_me.sin_port = htons(PORT);
+    si_me.sin_port = htons(PORT_RELAY1);
     si_me.sin_addr.s_addr = htonl(INADDR_ANY);
 
     //bind socket to port
@@ -143,23 +74,17 @@ int main(void)
         exit(2);
     }
 
-    if(listen(master_socket, 3) < 0)
-    {
-        perror("listen failed");
-        exit(1);
-    }
+    int addrlen_me = sizeof(si_me);
 
-    printf("Listen successful\n");
-
-    printf("Waiting for connections...\n");
-
-    int addrlen = sizeof(si_me);
-
+    // setting up server address
+    memset(&si_server, 0, sizeof(si_me));
+    si_server.sin_family = AF_INET;
+    si_server.sin_port = htons(PORT_SERVER);
+    si_server.sin_addr.s_addr = inet_addr("127.0.0.1");
 
     //accept connections and data
     while(true)
     {
-
         FD_ZERO(&master_fds);
         FD_ZERO(&read_fds);
         max_fd = master_socket;
@@ -253,9 +178,11 @@ int main(void)
                 }
 
             }
-        }       
+        }
+            
+            
+
+           
     }
-    write_buffer(fp);
-    fclose(fp);
     return 0;
 }

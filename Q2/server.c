@@ -116,37 +116,6 @@ void buffer_manager(FILE* fp, PACKET* p)
     return;
 }
 
-/*
-// returns -1 if buffer is already full at that place, otherwise 0
-int buffer_manager(FILE* fp, PACKET* p)
-{
-    int eff_seq_no = p->seqNo % BUFFER_SIZE;
-    
-    // buffer is not empty at that place
-    if(buffer[eff_seq_no] != NULL && buffer[eff_seq_no]->seqNo == p->seqNo)
-    {
-        //duplicate packet
-        return -1;
-    }
-
-    // buffer at that position is empty, so put your packet
-    buffer[eff_seq_no] = (char*) malloc(sizeof(p->payload));
-    strcpy(buffer[eff_seq_no], p->payload);
-
-    // check if buffer is full
-    for(int i = 0; i < BUFFER_SIZE; i++)
-    {
-        // buffer is not full, our job is done
-        if(buffer[i] == NULL)
-            return 0;
-    }
-
-    //buffer is full, so write to file
-    printf("Buffer became full\n");
-    write_buffer(fp);
-    return 0;
-}
-*/
 
 int main(void)
 {
@@ -218,8 +187,6 @@ int main(void)
         else
         {
             int eff_seq_no = p.seqNo % BUFFER_SIZE;
-    
-            
 
             buffer_manager(fp, &p);
 

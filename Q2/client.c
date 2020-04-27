@@ -150,8 +150,7 @@ int main(void)
     int yes = 1;
     fd_set read_fds, master;
     int fdmax;
-    // int state = 0;
-    // int last_ack = -1;
+    
 
     // opening the file, to transfer
     FILE* fp = fopen(FILE_NAME, "r");

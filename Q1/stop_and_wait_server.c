@@ -7,7 +7,7 @@
 #define FILE_NAME "output.txt"
 #define BUFFER_SIZE 10
 bool is_last_packet = false;
-
+int buffer_start_packet = 0;
 char* buffer[BUFFER_SIZE];
 
 
@@ -61,10 +61,9 @@ void initialise_buffer(void)
 void write_buffer(FILE* fp)
 {
     int i = 0;
-    while(buffer[i] != NULL)
+    while(buffer[i] != NULL && i < BUFFER_SIZE)
     {
         fwrite(buffer[i], 1, strlen(buffer[i]), fp);
-        free(buffer[i]);
         buffer[i] = NULL;
         i++;
     }
@@ -73,13 +72,14 @@ void write_buffer(FILE* fp)
 // returns -1 if buffer is already full at that place, otherwise 0
 int buffer_manager(FILE* fp, PACKET* p)
 {
+
+    if(p->seqNo < buffer_start_packet || p->seqNo > (buffer_start_packet + BUFFER_SIZE - 1))
+        return -1;
     int eff_seq_no = p->seqNo % BUFFER_SIZE;
     
     // buffer is not empty at that place
     if(buffer[eff_seq_no] != NULL)
-    {
         return -1;
-    }
 
     // buffer at that position is empty, so put your packet
     buffer[eff_seq_no] = (char*) malloc(sizeof(p->payload));
@@ -94,7 +94,7 @@ int buffer_manager(FILE* fp, PACKET* p)
     }
 
     //buffer is full, so write to file
-    printf("Buffer became full\n");
+    buffer_start_packet += 10;
     write_buffer(fp);
     return 0;
 }
@@ -240,7 +240,7 @@ int main(void)
                     int out = buffer_manager(fp, &p);
                     if(out == -1)
                     {
-                        printf("Buffer full. Packet with seq %d from channel %d is out of order and cannot fit buffer. Dropped\n", p.seqNo, p.channelID);
+                        printf("Packet with seq %d from channel %d is out of order and cannot fit buffer. Dropped\n", p.seqNo, p.channelID);
                         continue;
                     }
                     PACKET* packet = make_ack_packet(p.seqNo, p.channelID, p.isLastPacket);

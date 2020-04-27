@@ -86,6 +86,25 @@ int main(void)
     }
     else
         printf("Socket Server created successfully\n");
+    
+    int num = 100;
+    if (setsockopt(socket1, SOL_SOCKET, SO_RCVBUF, &num, sizeof(num)) == -1)
+    {
+        perror("socket buffer resize failed");
+        exit(1);
+    }
+
+    if (setsockopt(socket2, SOL_SOCKET, SO_RCVBUF, &num, sizeof(num)) == -1)
+    {
+        perror("socket buffer resize failed");
+        exit(1);
+    }
+
+    if (setsockopt(socket_server, SOL_SOCKET, SO_RCVBUF, &num, sizeof(num)) == -1)
+    {
+        perror("socket buffer resize failed");
+        exit(1);
+    }
 
     //for reusing the same sockets :)
     if(setsockopt(socket1, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) < 0 )   
@@ -173,7 +192,6 @@ int main(void)
         }
 
         // if data for relay from client
-        // decide if you want to accept, if yes then send ack (add delay)
         for(int j = 0; j < 2; j++)
         {   
             int i;
@@ -232,6 +250,7 @@ int main(void)
                     
                     else
                     {
+                        printf("HERE\n");
                         printf("Packet recvd at Relay%d  Relay%d  R  %s  ACK  %d  SERVER  RELAY%d\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
                         //usleep((rand() % MAX_ACK_DELAY) * 1000);
                         int addrlen_client = sizeof(si_client);
@@ -249,11 +268,35 @@ int main(void)
             }
         }
         
-
-
-            
-
-           
+        //if data from server
+        if(FD_ISSET(socket_server, &read_fds))
+        {
+            PACKET p;
+            int temp;
+            memset(&si_other, 0, si_other_len);
+            if((temp = recvfrom(socket_server, &p, sizeof(p), 0, (struct sockaddr*) &si_other,(socklen_t*) &si_other_len)) == -1)
+            {
+                printf("Error in recv: %d\n", socket_server);
+                exit(2);
+            }
+            // closed connection
+            else if(temp == 0)
+            {
+                printf("Closed connection\n");
+                return 0;
+            }
+            printf("Packet recvd at Relay%d  Relay%d  R  %s  ACK  %d  SERVER  RELAY%d\n", p.channelID, p.channelID, get_sys_time(), p.seqNo, p.channelID);
+            //usleep((rand() % MAX_ACK_DELAY) * 1000);
+            int addrlen_client = sizeof(si_client);
+            if(sendto(socket_server, &p, sizeof(p),
+                    0, (struct sockaddr*) &si_client, addrlen_client) == -1)
+            {
+                perror("Send failed");
+                exit(2);
+            }
+            else
+                printf("Packet sent at Relay%d  Relay%d  S  %s  ACK  %d  RELAY%d  SERVER\n", p.channelID, p.channelID, get_sys_time(), p.seqNo, p.channelID);
+        }
     }
     return 0;
 }

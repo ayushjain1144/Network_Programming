@@ -173,6 +173,19 @@ int main(void)
     else
         printf("Socket2 created successfully\n");
 
+    int num = 100;
+    if (setsockopt(socket1, SOL_SOCKET, SO_RCVBUF, &num, sizeof(num)) == -1)
+    {
+        perror("socket buffer resize failed");
+        exit(1);
+    }
+
+    if (setsockopt(socket2, SOL_SOCKET, SO_RCVBUF, &num, sizeof(num)) == -1)
+    {
+        perror("socket buffer resize failed");
+        exit(1);
+    }
+
     //for reusing the same sockets :)
     if(setsockopt(socket1, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) < 0 )   
     {   

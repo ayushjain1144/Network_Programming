@@ -163,6 +163,13 @@ int main(void)
         exit(EXIT_FAILURE);   
     }
 
+    int num = 100;
+    if (setsockopt(master_socket, SOL_SOCKET, SO_RCVBUF, &num, sizeof(num)) == -1)
+    {
+        perror("socket buffer resize failed");
+        exit(1);
+    }
+
      // setting up server address
     memset(&si_me, 0, sizeof(si_me));
     si_me.sin_family = AF_INET;

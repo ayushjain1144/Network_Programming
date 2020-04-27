@@ -280,6 +280,7 @@ int main(void)
         //if timeout on whole window, send all the unacked packets.
         if(out == 0)
         {
+            printf("Timeout Occurred. Retransmitting\n");
             //searching for unacked packets
             for(int i = 0; i < WINDOW_SIZE; i++)
             {
@@ -302,26 +303,31 @@ int main(void)
                 PACKET p;
                 if(i == socket1)
                 {
-                    if(recvfrom(socket1, &p, sizeof(p), 0, (struct sockaddr*) &relayAddr1, (socklen_t*)&relayAddr1_len) == -1)
+                    struct sockaddr_in si_other;
+                    int si_other_len = sizeof(si_other);
+                    memset(&si_other, 0, si_other_len);
+                    if(recvfrom(socket1, &p, sizeof(p), 0, (struct sockaddr*) &si_other, (socklen_t*)&si_other_len) == -1)
                     {
                         perror("Receive from socket1 failed");
                         exit(4);
                     }
-                    else
-                        printf("Ack from relay1  Client  R  %s ACK  %d  RELAY1  CLIENT\n", get_sys_time(), p.seqNo);
+                    else        
+                        printf("Ack from relay1        Client  R  %s  ACK  %d  RELAY1  CLIENT\n", get_sys_time(), p.seqNo);
                     last_ack_received  = p.seqNo;
-                    print_packet(&p);
 
                 }
                 else if(i == socket2)
                 {
-                    if(recvfrom(socket2, &p, sizeof(p), 0, (struct sockaddr*) &relayAddr2, (socklen_t*)&relayAddr2_len) == -1)
+                    struct sockaddr_in si_other;
+                    int si_other_len = sizeof(si_other);
+                    memset(&si_other, 0, si_other_len);
+                    if(recvfrom(socket2, &p, sizeof(p), 0, (struct sockaddr*) &si_other, (socklen_t*)&si_other_len) == -1)
                     {
                         perror("Receive from socket2 failed");
                         exit(4);
                     }
-                    else
-                        printf("Ack from relay2  Client  R  %s ACK  %d  RELAY2  CLIENT\n", get_sys_time(), p.seqNo);
+                    else        
+                        printf("Ack from relay2        Client  R  %s  ACK  %d  RELAY2  CLIENT\n", get_sys_time(), p.seqNo);
                     last_ack_received = p.seqNo;
                 }
 
@@ -333,23 +339,27 @@ int main(void)
                 if(window[window_border]->is_acked)
                     slide_window(fp, window);
                 
-                //check for termination condition
-                if(p.isLastPacket)
-                {
-                    is_exit = true;
-                    for(int i = 0; i < WINDOW_SIZE; i++)
-                    {
-                        if(window[i] != NULL)
-                        {
-                            if(window[i]->is_acked == false)
-                            {
-                                is_exit = false;
-                                break;
-                            }
 
+                
+                //check for termination condition
+                
+                
+                for(int i = 0; i < WINDOW_SIZE; i++)
+                {
+                    if(window[i]->p != NULL)
+                    {
+                        if(window[i]->is_acked == false)
+                        {
+                            is_exit = false;
+                            break;
                         }
+
+                        else if (window[i]->p->isLastPacket)
+                            is_exit = true;
+
                     }
                 }
+                
 
             }
         }

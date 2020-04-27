@@ -235,7 +235,7 @@ int main(void)
                             continue;
                         }
 
-                        printf("Packet recvd at Relay%d  Relay%d  R  %s  DATA  %d  SERVER  RELAY%d\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
+                        printf("Packet recvd at Relay%d\t  Relay%d  R  %s  DATA  %d  CLIENT  RELAY%d\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
                         if(sendto(socket_server, &p, sizeof(p),
                                 0, (struct sockaddr*) &si_server, addrlen_server) == -1)
                         {
@@ -243,7 +243,7 @@ int main(void)
                             exit(2);
                         }
                         else
-                            printf("Packet sent at Relay%d  Relay%d  S  %s  DATA  %d  RELAY%d  SERVER\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
+                            printf("Packet sent at Relay%d\t  Relay%d  S  %s  DATA  %d  RELAY%d  SERVER\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
                     }
                     
                     // It's ACK!!
@@ -251,7 +251,7 @@ int main(void)
                     else
                     {
                         printf("HERE\n");
-                        printf("Packet recvd at Relay%d  Relay%d  R  %s  ACK  %d  SERVER  RELAY%d\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
+                        printf("Ack at Relay%d  Relay%d  R  %s  ACK  %d  SERVER  RELAY%d\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
                         //usleep((rand() % MAX_ACK_DELAY) * 1000);
                         int addrlen_client = sizeof(si_client);
                         if(sendto(i, &p, sizeof(p),
@@ -285,7 +285,7 @@ int main(void)
                 printf("Closed connection\n");
                 return 0;
             }
-            printf("Packet recvd at Relay%d  Relay%d  R  %s  ACK  %d  SERVER  RELAY%d\n", p.channelID, p.channelID, get_sys_time(), p.seqNo, p.channelID);
+            printf("Ack recvd at Relay%d\t  Relay%d  R  %s  ACK   %d  SERVER  RELAY%d\n", p.channelID, p.channelID, get_sys_time(), p.seqNo, p.channelID);
             //usleep((rand() % MAX_ACK_DELAY) * 1000);
             int addrlen_client = sizeof(si_client);
             if(sendto(socket_server, &p, sizeof(p),
@@ -295,7 +295,7 @@ int main(void)
                 exit(2);
             }
             else
-                printf("Packet sent at Relay%d  Relay%d  S  %s  ACK  %d  RELAY%d  SERVER\n", p.channelID, p.channelID, get_sys_time(), p.seqNo, p.channelID);
+                printf("Ack sent at Relay%d\t  Relay%d  S  %s  ACK   %d  RELAY%d  CLIENT\n", p.channelID, p.channelID, get_sys_time(), p.seqNo, p.channelID);
         }
     }
     return 0;

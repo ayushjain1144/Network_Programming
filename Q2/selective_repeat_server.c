@@ -7,6 +7,7 @@
 #define BUFFER_SIZE 10
 bool is_last_packet = false;
 int buffer_border = 0;
+bool is_exit = false;
 
 PACKET* buffer[BUFFER_SIZE];
 
@@ -70,37 +71,42 @@ void write_buffer(FILE* fp)
         else
             break;
     }while(temp != buffer_border);
+    
 }
 
-int buffer_manager(FILE* fp, PACKET* p)
+void buffer_manager(FILE* fp, PACKET* p)
 {
     int eff_seq_no = p->seqNo % BUFFER_SIZE;
-    
-    // buffer is not empty at that place
-    if(buffer[eff_seq_no] != NULL && buffer[eff_seq_no]->seqNo == p->seqNo)
+
+    // buffer is not empty at that place 
+    // this is duplicate packet
+    if(buffer[eff_seq_no] != NULL && buffer[eff_seq_no]->seqNo >= p->seqNo)
     {
-        //duplicate packet
-        return -1;
+        return;
     }
-    int temp = buffer_border;
+
+    if(buffer[eff_seq_no] != NULL)
+            fwrite(buffer[eff_seq_no]->payload, 1, strlen(buffer[eff_seq_no]->payload) + 1, fp);
     
-    //replace the current border packet with a new packet and send it
-    do
+    buffer[eff_seq_no] = (PACKET*) malloc (sizeof(PACKET));
+    strcpy(buffer[eff_seq_no]->payload, p->payload);
+    buffer[eff_seq_no]->seqNo = p->seqNo;
+    buffer[eff_seq_no]->isLastPacket = p->isLastPacket;
+
+    if(eff_seq_no == buffer_border)
     {
-        //the entry is non empty
-        if(buffer[buffer_border] != NULL)
-            fwrite(buffer[buffer_border]->payload, 1, strlen(buffer[buffer_border]->payload) + 1, fp);    
-        buffer[buffer_border] = (PACKET*) malloc (sizeof(PACKET));
-        strcpy(buffer[buffer_border]->payload, p->payload);
-        buffer[buffer_border]->seqNo = p->seqNo;
-
-        buffer_border = (buffer_border + 1) % BUFFER_SIZE;
-
-        //if next packet is not there, then lite
-        if(buffer[buffer_border] == NULL)
-            break;
-    } while (buffer_border != temp);
-    return 0;
+        while(buffer[buffer_border] != NULL)
+        {       
+            
+            fwrite(buffer[buffer_border]->payload, 1, strlen(buffer[buffer_border]->payload) + 1, fp);
+            if(buffer[buffer_border]->isLastPacket)
+                fclose(fp);
+            buffer[buffer_border] = NULL;
+            buffer_border = (buffer_border + 1) % BUFFER_SIZE;
+        }
+    }
+    
+    return;
 }
 
 /*
@@ -204,13 +210,11 @@ int main(void)
         }
         else
         {
+            int eff_seq_no = p.seqNo % BUFFER_SIZE;
+    
             
-            int out = buffer_manager(fp, &p);
-            if(out == -1)
-            {
-                printf("Duplicate Packet recvd at Server  Server  R  %s  DATA  %d  RELAY%d  SERVER. Ignored\n", get_sys_time(), p.seqNo, p.channelID);
-                continue;
-            }
+
+            buffer_manager(fp, &p);
 
             printf("Packet recvd at Server  Server  R  %s  DATA  %d  RELAY%d  SERVER\n", get_sys_time(), p.seqNo, p.channelID);
             PACKET* packet = make_ack_packet(p.seqNo, p.channelID, p.isLastPacket);
@@ -221,16 +225,12 @@ int main(void)
                 exit(2);
             }
             else
-                printf("ACK sent at Server  Server  S  %s  ACK  %d  SERVER  RELAY%d\n", get_sys_time(), p.seqNo, p.channelID);
+                printf("ACK sent at Server      Server  S  %s  ACK   %d  SERVER  RELAY%d\n", get_sys_time(), p.seqNo, p.channelID);
+
         }        
               
     }
-    write_buffer(fp);
     fclose(fp);
     return 0;
 }
 
-
-//TO DO
-// Modify MAKE_ACK_PACKET
-// Moidfy MANAGE_BUFFER: Implement a sliding window buffer here.

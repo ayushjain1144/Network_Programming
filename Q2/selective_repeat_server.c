@@ -10,22 +10,6 @@ bool is_last_packet = false;
 
 char* buffer[BUFFER_SIZE];
 
-
-// returns 1 if packet should be dropped
-int toss()
-{
-    if(PDR > 1)
-    {
-        printf("PDR value must be between 0 and 1, got %f\n", PDR);
-        exit(1);
-    }
-    float num = rand() / (float)RAND_MAX;
-    if(num < PDR)
-        return 1;
-    else
-        return 0;
-}
-
 void print_packet(PACKET* p)
 {
     printf("data: %s\n", p->payload);
@@ -48,6 +32,20 @@ PACKET* make_ack_packet(int seqNo, int channelID, bool isLastPacket)
     p->size = sizeof(p->payload);
     is_last_packet = isLastPacket;
     return p;
+}
+
+char* get_sys_time(void)
+{
+    char* time_str = (char*) malloc(sizeof(char) * 20);
+    time_t current_time = time(NULL);
+    struct tm* tp = localtime(&current_time);
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    strftime(time_str, 20, "%H:%M:%S", tp);
+    char milliseconds[8];
+    sprintf(milliseconds, ".%06ld", t.tv_usec);
+    strcat(time_str, milliseconds);
+    return time_str;
 }
 
 // NULLify the buffer
@@ -103,14 +101,11 @@ int main(void)
 {
     srand(time(NULL));
     initialise_buffer();
-    struct sockaddr_in si_me;
+    struct sockaddr_in si_me, si_other;
+    int si_other_len = sizeof(si_other);
     int master_socket;
     int yes = 1;
-    fd_set read_fds, master_fds;
-    int max_fd;
-    int socket1, socket2;
-    socket1 = 0;
-    socket2 = 0;
+    
     // opening the file, to transfer
     FILE* fp = fopen(FILE_NAME, "w");
 
@@ -143,119 +138,54 @@ int main(void)
         exit(2);
     }
 
-    if(listen(master_socket, 3) < 0)
-    {
-        perror("listen failed");
-        exit(1);
-    }
 
-    printf("Listen successful\n");
-
-    printf("Waiting for connections...\n");
-
-    int addrlen = sizeof(si_me);
-
-
-    //accept connections and data
     while(true)
     {
-
-        FD_ZERO(&master_fds);
-        FD_ZERO(&read_fds);
-        max_fd = master_socket;
-        // add the sockets to both the sets
-        FD_SET(master_socket, &master_fds);
-        FD_SET(socket1, &master_fds);
-        FD_SET(socket2, &master_fds);
-        read_fds = master_fds;
-        
-        if(socket1 > max_fd)
-            max_fd = socket1;
-        if(socket2 > max_fd)
-            max_fd = socket2;
-
-
-        if(select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1)
+                
+        PACKET p;
+        int temp;
+        if((temp = recvfrom(master_socket, &p, sizeof(p), 0, (struct sockaddr*) &si_other, (socklen_t*) &si_other_len)) == -1)
         {
-            perror("select\n");
+            printf("Error in recv: %d\n", master_socket);
             exit(2);
         }
-
-        
-        // obviously a request for connection
-        if(FD_ISSET(master_socket, &read_fds))
+        // closed connection
+        else if(temp == 0)
         {
-            int new_socket;
-            if((new_socket = accept(master_socket, (struct sockaddr*) &si_me, (socklen_t*)&addrlen)) == -1)
+            printf("Closed connection\n");
+            write_buffer(fp);
+            fclose(fp);
+            return 0;
+        }
+        else
+        {
+            
+            int out = buffer_manager(fp, &p);
+            if(out == -1)
             {
-                perror("accept failed");
+                printf("Duplicate Packet recvd at Server  Server  R  %s  DATA  %d  RELAY%d  SERVER. Ignored\n", get_sys_time(), p.seqNo, p.channelID);
+                continue;
+            }
+
+            printf("Packet recvd at Server  Server  R  %s  DATA  %d  RELAY%d  SERVER\n", get_sys_time(), p.seqNo, p.channelID);
+            PACKET* packet = make_ack_packet(p.seqNo, p.channelID, p.isLastPacket);
+            if(sendto(master_socket, packet, sizeof(*packet),
+                                0, (struct sockaddr*) &si_other, si_other_len) == -1)
+            {
+                perror("Send failed");
                 exit(2);
             }
-
-            printf("Accepted new connection from socket: %d, IP: %s, Port: %d\n", new_socket, inet_ntoa(si_me.sin_addr), ntohs(si_me.sin_port));
-
-            if (socket1 == 0)
-                socket1 = new_socket;
             else
-                socket2 = new_socket;    
-        }
-
-        // must be data on some port
-        for(int j = 0; j < 2; j++)
-        {   
-            int i;
-            if(j == 0)
-                i = socket1;
-            else
-                i = socket2;
-            if(FD_ISSET(i, &read_fds))
-            {   
-                PACKET p;
-                int temp;
-                if((temp = recv(i, &p, sizeof(p), 0)) == -1)
-                {
-                    printf("Error in recv: %d\n", i);
-                    exit(2);
-                }
-                // closed connection
-                else if(temp == 0)
-                {
-                    printf("Closed connection\n");
-                    write_buffer(fp);
-                    fclose(fp);
-                    return 0;
-                }
-                else
-                {
-                    int toss_result = toss();
-                    if(toss_result)
-                    {
-                        printf("OOPS, packet dropped at server\n");
-                        continue;
-                    }
-                    printf("RECV PKT: Seq. No %d of size %d Bytes from channel %d\n", p.seqNo, p.size, p.channelID);
-                    //print_packet(&p);
-                    int out = buffer_manager(fp, &p);
-                    if(out == -1)
-                    {
-                        printf("Buffer full. Packet with seq %d from channel %d is out of order and cannot fit buffer. Dropped\n", p.seqNo, p.channelID);
-                        continue;
-                    }
-                    PACKET* packet = make_ack_packet(p.seqNo, p.channelID, p.isLastPacket);
-                    if(send(i, packet, sizeof(*packet), 0) == -1)
-                    {
-                        perror("send failed\n");
-                        exit(3);
-                    }
-                    else
-                        printf("Sent ACK: Seq. No %d of size %d Bytes from channel %d\n", packet->seqNo, packet->size, packet->channelID);
-
-                }
-
-            }
-        }       
+                printf("ACK sent at Server  Server  S  %s  ACK  %d  SERVER  RELAY%d\n", get_sys_time(), p.seqNo, p.channelID);
+        }        
+              
     }
     write_buffer(fp);
     fclose(fp);
     return 0;
 }
+
+
+//TO DO
+// Modify MAKE_ACK_PACKET
+// Moidfy MANAGE_BUFFER: Implement a sliding window buffer here.

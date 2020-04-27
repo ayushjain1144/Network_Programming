@@ -141,9 +141,9 @@ int main(void)
     memset(&si_server, 0, sizeof(si_server));
     si_server.sin_family = AF_INET;
     si_server.sin_port = htons(PORT_SERVER);
-    si_server.sin_addr.s_addr = inet_addr("127.0.0.1");
+    si_server.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    int addrlen_server = sizeof(addrlen_server);
+    int addrlen_server = sizeof(si_server);
 
     FD_ZERO(&master);
     FD_ZERO(&read_fds);
@@ -201,7 +201,6 @@ int main(void)
                 }
                 else
                 {
-
                     //packet can be from server or form client
                     //if data it is from client, just send it to server
                     //else ack, either drop or send it with delay
@@ -219,7 +218,6 @@ int main(void)
                         }
 
                         printf("Packet recvd at Relay%d  Relay%d  R  %s  DATA  %d  SERVER  RELAY%d\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
-
                         if(sendto(socket_server, &p, sizeof(p),
                                 0, (struct sockaddr*) &si_server, addrlen_server) == -1)
                         {
@@ -235,8 +233,7 @@ int main(void)
                     else
                     {
                         printf("Packet recvd at Relay%d  Relay%d  R  %s  ACK  %d  SERVER  RELAY%d\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
-                        
-                        usleep((rand() % MAX_ACK_DELAY) * 1000);
+                        //usleep((rand() % MAX_ACK_DELAY) * 1000);
                         int addrlen_client = sizeof(si_client);
                         if(sendto(i, &p, sizeof(p),
                                 0, (struct sockaddr*) &si_client, addrlen_client) == -1)

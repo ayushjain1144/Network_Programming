@@ -4,7 +4,7 @@
 #include<sys/time.h>
 #define PORT_RELAY1 1234
 #define PORT_RELAY2 1235
-#define FILE_NAME "input.txt"
+#define FILE_NAME "input1.txt"
 #define WINDOW_SIZE 10
 
 int seq_num = 0;
@@ -185,6 +185,7 @@ int main(void)
         exit(EXIT_FAILURE);   
     }
 
+
     // setting up relay addresses
     memset(&relayAddr1, 0, sizeof(relayAddr1));
     relayAddr1.sin_family = AF_INET;
@@ -192,12 +193,12 @@ int main(void)
     relayAddr1.sin_addr.s_addr = inet_addr("127.0.0.1");
     relayAddr1_len = sizeof(relayAddr1);
 
+
     memset(&relayAddr2, 0, sizeof(relayAddr2));
     relayAddr2.sin_family = AF_INET;
     relayAddr2.sin_port = htons(PORT_RELAY2);
     relayAddr2.sin_addr.s_addr = inet_addr("127.0.0.1");
     relayAddr2_len = sizeof(relayAddr2);
-
 
     FD_ZERO(&master);
     FD_ZERO(&read_fds);
@@ -218,6 +219,7 @@ int main(void)
     WINDOW* window[WINDOW_SIZE];
     for(int i = 0; i < WINDOW_SIZE; i++)
     {
+        window[i] = (WINDOW*) malloc(sizeof(WINDOW));
         window[i]->p = NULL;
         window[i]->is_acked = false;
     }
@@ -295,6 +297,7 @@ int main(void)
                     else
                         printf("Ack from relay1  Client  R  %s ACK  %d  RELAY1  CLIENT\n", get_sys_time(), p.seqNo);
                     last_ack_received  = p.seqNo;
+                    print_packet(&p);
 
                 }
                 else if(i == socket2)

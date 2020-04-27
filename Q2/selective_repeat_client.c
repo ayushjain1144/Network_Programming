@@ -247,7 +247,7 @@ int main(void)
     }
 
     // managing the different read fds
-    while(!is_exit && !(send1_over && send2_over))
+    while(!is_exit)
     {
         read_fds = master;
 
@@ -316,6 +316,25 @@ int main(void)
                 //slide the window and all, if needed.
                 if(window[window_border]->is_acked)
                     slide_window(fp, window);
+                
+                //check for termination condition
+                if(p.isLastPacket)
+                {
+                    is_exit = true;
+                    for(int i = 0; i < WINDOW_SIZE; i++)
+                    {
+                        if(window[i] != NULL)
+                        {
+                            if(window[i]->is_acked == false)
+                            {
+                                is_exit = false;
+                                break;
+                            }
+
+                        }
+                    }
+                }
+
             }
         }
     }

@@ -6,7 +6,7 @@
 #define PORT_RELAY1 1234
 #define PORT_RELAY2 1235
 #define PORT_SERVER 8787
-#define MAX_ACK_DELAY 2
+#define MAX_ACK_DELAY 0
 
 // returns 1 if packet should be dropped
 int toss()

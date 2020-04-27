@@ -2,7 +2,6 @@
 #include "packet.h"
 #include <time.h>
 #include <string.h>
-#define PDR 0.1
 #define PORT 8787
 #define FILE_NAME "output.txt"
 #define BUFFER_SIZE 10

@@ -7,8 +7,9 @@
 #define FILE_NAME "output.txt"
 #define BUFFER_SIZE 10
 bool is_last_packet = false;
+int buffer_border = 0;
 
-char* buffer[BUFFER_SIZE];
+PACKET* buffer[BUFFER_SIZE];
 
 void print_packet(PACKET* p)
 {
@@ -58,24 +59,61 @@ void initialise_buffer(void)
 
 void write_buffer(FILE* fp)
 {
-    int i = 0;
-    while(buffer[i] != NULL)
+    int temp = buffer_border;
+    do
     {
-        fwrite(buffer[i], 1, strlen(buffer[i]), fp);
-        free(buffer[i]);
-        buffer[i] = NULL;
-        i++;
-    }
+        if(buffer[temp] != NULL)
+        {
+            fwrite(buffer[temp]->payload, 1, strlen(buffer[temp]->payload) + 1, fp);
+            buffer[temp] = NULL;
+            temp = (temp + 1) % BUFFER_SIZE;
+        }
+        else
+            break;
+    }while(temp != buffer_border);
 }
 
+int buffer_manager(FILE* fp, PACKET* p)
+{
+    int eff_seq_no = p->seqNo % BUFFER_SIZE;
+    
+    // buffer is not empty at that place
+    if(buffer[eff_seq_no] != NULL && buffer[eff_seq_no]->seqNo == p->seqNo)
+    {
+        //duplicate packet
+        return -1;
+    }
+    int temp = buffer_border;
+    
+    //replace the current border packet with a new packet and send it
+    do
+    {
+        //the entry is non empty
+        if(buffer[buffer_border] != NULL)
+            fwrite(buffer[buffer_border]->payload, 1, strlen(buffer[buffer_border]->payload) + 1, fp);    
+        buffer[buffer_border] = (PACKET*) malloc (sizeof(PACKET));
+        strcpy(buffer[buffer_border]->payload, p->payload);
+        buffer[buffer_border]->seqNo = p->seqNo;
+
+        buffer_border = (buffer_border + 1) % BUFFER_SIZE;
+
+        //if next packet is not there, then lite
+        if(buffer[buffer_border] == NULL)
+            break;
+    } while (buffer_border != temp);
+    return 0;
+}
+
+/*
 // returns -1 if buffer is already full at that place, otherwise 0
 int buffer_manager(FILE* fp, PACKET* p)
 {
     int eff_seq_no = p->seqNo % BUFFER_SIZE;
     
     // buffer is not empty at that place
-    if(buffer[eff_seq_no] != NULL)
+    if(buffer[eff_seq_no] != NULL && buffer[eff_seq_no]->seqNo == p->seqNo)
     {
+        //duplicate packet
         return -1;
     }
 
@@ -96,6 +134,7 @@ int buffer_manager(FILE* fp, PACKET* p)
     write_buffer(fp);
     return 0;
 }
+*/
 
 int main(void)
 {

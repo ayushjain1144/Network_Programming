@@ -7,6 +7,7 @@
 #define BUFFER_SIZE 10
 bool is_last_packet = false;
 int buffer_border = 0;
+int last_wrote_packet = -1;
 bool is_exit = false;
 
 PACKET* buffer[BUFFER_SIZE];
@@ -64,7 +65,7 @@ void write_buffer(FILE* fp)
     {
         if(buffer[temp] != NULL)
         {
-            fwrite(buffer[temp]->payload, 1, strlen(buffer[temp]->payload) + 1, fp);
+            fwrite(buffer[temp]->payload, 1, strlen(buffer[temp]->payload), fp);
             buffer[temp] = NULL;
             temp = (temp + 1) % BUFFER_SIZE;
         }
@@ -76,6 +77,9 @@ void write_buffer(FILE* fp)
 
 void buffer_manager(FILE* fp, PACKET* p)
 {
+
+    if(p->seqNo <= last_wrote_packet)
+        return;
     int eff_seq_no = p->seqNo % BUFFER_SIZE;
 
     // buffer is not empty at that place 
@@ -86,8 +90,10 @@ void buffer_manager(FILE* fp, PACKET* p)
     }
 
     if(buffer[eff_seq_no] != NULL)
-            fwrite(buffer[eff_seq_no]->payload, 1, strlen(buffer[eff_seq_no]->payload) + 1, fp);
-    
+    {
+        fwrite(buffer[eff_seq_no]->payload, 1, strlen(buffer[eff_seq_no]->payload) + 1, fp);
+        last_wrote_packet = buffer[eff_seq_no]->seqNo;
+    }
     buffer[eff_seq_no] = (PACKET*) malloc (sizeof(PACKET));
     strcpy(buffer[eff_seq_no]->payload, p->payload);
     buffer[eff_seq_no]->seqNo = p->seqNo;
@@ -98,7 +104,8 @@ void buffer_manager(FILE* fp, PACKET* p)
         while(buffer[buffer_border] != NULL)
         {       
             
-            fwrite(buffer[buffer_border]->payload, 1, strlen(buffer[buffer_border]->payload) + 1, fp);
+            fwrite(buffer[buffer_border]->payload, 1, strlen(buffer[buffer_border]->payload), fp);
+            last_wrote_packet = buffer[buffer_border]->seqNo;
             if(buffer[buffer_border]->isLastPacket)
                 fclose(fp);
             buffer[buffer_border] = NULL;

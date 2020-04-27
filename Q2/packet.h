@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include<sys/time.h>
 #define PACKET_SIZE 100
-#define timeout 5
+#define timeout 1
 
 typedef struct PACKET
 {

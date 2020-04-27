@@ -4,7 +4,7 @@
 #include<sys/time.h>
 #define PORT_RELAY1 1234
 #define PORT_RELAY2 1235
-#define FILE_NAME "input1.txt"
+#define FILE_NAME "input.txt"
 #define WINDOW_SIZE 10
 
 int seq_num = 0;
@@ -312,7 +312,7 @@ int main(void)
                         exit(4);
                     }
                     else        
-                        printf("Ack from relay1        Client  R  %s  ACK  %d  RELAY1  CLIENT\n", get_sys_time(), p.seqNo);
+                        printf("Ack from relay1        Client  R  %s  ACK   %d  RELAY1  CLIENT\n", get_sys_time(), p.seqNo);
                     last_ack_received  = p.seqNo;
 
                 }
@@ -327,7 +327,7 @@ int main(void)
                         exit(4);
                     }
                     else        
-                        printf("Ack from relay2        Client  R  %s  ACK  %d  RELAY2  CLIENT\n", get_sys_time(), p.seqNo);
+                        printf("Ack from relay2        Client  R  %s  ACK   %d  RELAY2  CLIENT\n", get_sys_time(), p.seqNo);
                     last_ack_received = p.seqNo;
                 }
 

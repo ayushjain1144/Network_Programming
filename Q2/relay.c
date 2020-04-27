@@ -2,18 +2,18 @@
 #include "packet.h"
 #include <time.h>
 #include <string.h>
-#define PDR 0
+#define PDR 0.1
 #define PORT_RELAY1 1234
 #define PORT_RELAY2 1235
 #define PORT_SERVER 8787
-#define MAX_ACK_DELAY 0
+#define MAX_ACK_DELAY 2
 
 // returns 1 if packet should be dropped
 int toss()
 {
     if(PDR > 1)
     {
-        printf("PDR value must be between 0 and 1, got %d\n", PDR);
+        printf("PDR value must be between 0 and 1, got %f\n", PDR);
         exit(1);
     }
     float num = rand() / (float)RAND_MAX;
@@ -247,22 +247,6 @@ int main(void)
                     }
                     
                     // It's ACK!!
-                    
-                    else
-                    {
-                        printf("HERE\n");
-                        printf("Ack at Relay%d  Relay%d  R  %s  ACK  %d  SERVER  RELAY%d\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
-                        //usleep((rand() % MAX_ACK_DELAY) * 1000);
-                        int addrlen_client = sizeof(si_client);
-                        if(sendto(i, &p, sizeof(p),
-                                0, (struct sockaddr*) &si_client, addrlen_client) == -1)
-                        {
-                            perror("Send failed");
-                            exit(2);
-                        }
-                        else
-                            printf("Packet sent at Relay%d  Relay%d  S  %s  DATA  %d  RELAY%d  SERVER\n", j + 1, j + 1, get_sys_time(), p.seqNo, j+1);
-                    }
                 }
 
             }
@@ -286,7 +270,7 @@ int main(void)
                 return 0;
             }
             printf("Ack recvd at Relay%d\t  Relay%d  R  %s  ACK   %d  SERVER  RELAY%d\n", p.channelID, p.channelID, get_sys_time(), p.seqNo, p.channelID);
-            //usleep((rand() % MAX_ACK_DELAY) * 1000);
+            usleep((rand() % MAX_ACK_DELAY) * 1000);
             int addrlen_client = sizeof(si_client);
             if(sendto(socket_server, &p, sizeof(p),
                     0, (struct sockaddr*) &si_client, addrlen_client) == -1)
